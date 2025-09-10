@@ -1,73 +1,48 @@
-# Welcome to your Lovable project
+# OceanAlly – Frontend  
 
-## Project info
+This is the **frontend** of the OceanAlly project (SIH).  
+It is built with **React, Vite, Tailwind CSS, and Shadcn UI**.  
 
-**URL**: https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5
+---
 
-## How can I edit this code?
+## 🚀 Features
+- Modern UI with clean design  
+- Responsive (works on desktop and mobile)  
+- Built using **React + Vite** for fast development  
+- Styled with **Tailwind CSS** and **Shadcn UI** components  
 
-There are several ways of editing your application.
+---
 
-**Use Lovable**
+## 📂 Project Structure
+WEB/frontend/
+├── public/ # Static assets
+├── src/ # React components, pages, styles
+├── package.json # Dependencies & scripts
+├── vite.config.js # Vite configuration
+└── README.md # Project documentation
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5) and start prompting.
 
-Changes made via Lovable will be committed automatically to this repo.
+---
 
-**Use your preferred IDE**
+## 🛠️ Setup Instructions
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+### 1. Install Dependencies
+```bash
+cd WEB/frontend
+npm install
 ```
 
-**Edit a file directly in GitHub**
+## Run Development Server
+npm run dev
+Now open http://localhost:5173
+ in your browser.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+ ## Build for Production
+ npm run build
 
-**Use GitHub Codespaces**
+⚠️ Notes
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+node_modules is not pushed to GitHub (use npm install to generate it).
+If an .env file is required (API keys, backend URLs), create it in WEB/frontend/:
+```VITE_API_URL=http://localhost:5000 ```
+Works best with Node.js v18+.
