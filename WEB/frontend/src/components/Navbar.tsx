@@ -9,7 +9,6 @@ import {
   Menu, 
   X,
   Globe,
-  ChevronDown
 } from 'lucide-react';
 import {
   Select,
@@ -18,15 +17,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from '../hooks/useAuth'; // Assuming you have this hook for auth status
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth(); // Using the auth hook
+  const isOfficial = user && (user.role === 'official' || user.role === 'admin');
 
   const navItems = [
-    { name: 'Dashboard', href: '/dashboard', icon: BarChart3 },
-    { name: 'Report Hazard', href: '/report', icon: AlertTriangle },
-    { name: 'About', href: '/about', icon: Info },
+    { name: 'Dashboard', href: '/dashboard', icon: BarChart3, public: true },
+    isOfficial
+      ? { name: 'Verification', href: '/admin/verify', icon: AlertTriangle, public: false }
+      : { name: 'Report Hazard', href: '/report', icon: AlertTriangle, public: true },
+    { name: 'About', href: '/about', icon: Info, public: true },
   ];
 
   const isActive = (path: string) => location.pathname === path;
@@ -41,7 +45,7 @@ const Navbar = () => {
               <BarChart3 className="w-5 h-5 text-primary-foreground" />
             </div>
             <div className="hidden sm:block">
-              <span className="text-lg font-semibold text-foreground">Ocean Hazard Platform</span>
+              <span className="text-lg font-semibold text-foreground">OceanGuard</span>
               <div className="text-xs text-muted-foreground">Ministry of Earth Sciences</div>
             </div>
           </Link>
@@ -79,6 +83,15 @@ const Navbar = () => {
                 <SelectItem value="ta">தமிழ்</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* Auth Buttons */}
+            {user ? (
+                 <Button variant="ghost" size="sm" onClick={logout}>Logout</Button>
+            ) : (
+                <Button asChild size="sm">
+                    <Link to="/login">Login</Link>
+                </Button>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -119,6 +132,15 @@ const Navbar = () => {
                   </Link>
                 );
               })}
+              <div className="px-4 py-2">
+                 {user ? (
+                    <Button variant="outline" className="w-full" onClick={() => {logout(); setIsOpen(false);}}>Logout</Button>
+                ) : (
+                    <Button className="w-full" asChild>
+                        <Link to="/login" onClick={() => setIsOpen(false)}>Login</Link>
+                    </Button>
+                )}
+              </div>
               <div className="px-4 py-2">
                 <Select defaultValue="en">
                   <SelectTrigger className="w-full">
