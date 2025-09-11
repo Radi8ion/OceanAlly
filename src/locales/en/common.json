@@ -1,0 +1,39 @@
+{
+  "nav": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "report": "Report Hazard",
+    "myReports": "My Reports",
+    "awareness": "Awareness Hub",
+    "admin": "Admin",
+    "about": "About",
+    "login": "Login",
+    "register": "Register"
+  },
+  "landing": {
+    "title": "Integrated Platform for Ocean Hazard Reporting",
+    "subtitle": "Empowering citizens to report and analyze ocean hazards in real-time",
+    "cta": {
+      "report": "Report Ocean Hazard",
+      "dashboard": "View Live Dashboard"
+    },
+    "features": {
+      "realtime": "Real-time Reporting",
+      "realtimeDesc": "Submit hazard reports instantly with location data and media evidence",
+      "analytics": "Advanced Analytics",
+      "analyticsDesc": "AI-powered analysis of social media and crowdsourced data",
+      "multilingual": "Multilingual Support",
+      "multilingualDesc": "Available in multiple languages for nationwide accessibility"
+    }
+  },
+  "common": {
+    "loading": "Loading...",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "save": "Save",
+    "edit": "Edit",
+    "delete": "Delete",
+    "view": "View",
+    "language": "Language"
+  }
+}
