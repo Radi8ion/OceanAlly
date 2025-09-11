@@ -1,7 +1,10 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../hooks/useAuth'; // MODIFICATION: Import useAuth hook
 import { 
   AlertTriangle, 
   BarChart3, 
@@ -10,11 +13,14 @@ import {
   Waves,
   Shield,
   TrendingUp,
-  MapPin
+  MapPin,
+  ShieldCheck // MODIFICATION: Added icon for admin button
 } from 'lucide-react';
-import heroImage from '@/assets/hero-ocean.jpg';
+
 
 const Landing = () => {
+  const { user } = useAuth(); // MODIFICATION: Get user from auth hook
+
   const features = [
     {
       icon: AlertTriangle,
@@ -38,20 +44,53 @@ const Landing = () => {
     },
   ];
 
-  const stats = [
-    { number: '2,847', label: 'Active Reports', icon: MapPin },
-    { number: '15,234', label: 'Community Members', icon: Users },
-    { number: '98.5%', label: 'Accuracy Rate', icon: Shield },
+  const [stats, setStats] = useState([
+    { number: '2,800+', label: 'Active Reports', icon: MapPin },
+    { number: '15,000+', label: 'Community Members', icon: Users },
+    { number: '98.5%', label: 'Response Rate', icon: Shield },
     { number: '24/7', label: 'Monitoring', icon: TrendingUp },
-  ];
+  ]);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await axios.get('/api/v1/dashboard/stats');
+        const data = response.data;
+        
+        // MODIFICATION: Added checks to prevent NaN values.
+        // This ensures that if the API returns non-numeric data, we fall back to 0.
+        const formatNumber = (num: number) => {
+          if (typeof num !== 'number') return '0';
+          return new Intl.NumberFormat('en-IN').format(num);
+        }
+
+        const responseRate = typeof data.responseRate === 'number' 
+          ? `${data.responseRate}%` 
+          : data.responseRate || 'N/A';
+
+        setStats([
+          { number: formatNumber(data.activeHazards), label: 'Active Hazards', icon: MapPin },
+          { number: formatNumber(data.communityMembers), label: 'Community Members', icon: Users },
+          { number: responseRate, label: 'Response Rate', icon: Shield },
+          { number: '24/7', label: 'Monitoring', icon: TrendingUp },
+        ]);
+      } catch (error) {
+        console.warn('Could not fetch live stats for landing page. Using default values.');
+      }
+    };
+
+    fetchStats();
+  }, []);
+
+  const isOfficial = user && (user.role === 'official' || user.role === 'admin');
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       {/* Hero Section */}
       <section className="relative h-screen flex items-center justify-center overflow-hidden">
         <div 
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${heroImage})` }}
+          style={{ backgroundImage: `url('https://images.unsplash.com/photo-1509358271058-acd22cc93898?q=80&w=2070&auto=format&fit=crop')` }}
         >
           <div className="absolute inset-0 bg-gradient-to-r from-primary/90 to-primary-dark/80" />
         </div>
@@ -62,32 +101,48 @@ const Landing = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
+            {/* MODIFICATION: Title changes based on user role */}
             <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
-              Ocean Hazard Reporting
-              <span className="block text-primary-light">& Analytics Platform</span>
+              {isOfficial ? 'Welcome, Official' : 'Ocean Hazard Reporting'}
+              <span className="block text-primary-light">
+                {isOfficial ? 'Verification & Analytics Portal' : '& Analytics Platform'}
+              </span>
             </h1>
             <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-3xl mx-auto">
-              Empowering citizens to report and analyze ocean hazards in real-time through 
-              crowdsourced data and social media analytics.
+              {isOfficial
+                ? 'Review, verify, and manage community-submitted hazard reports to coordinate effective responses.'
+                : 'Empowering citizens to report and analyze ocean hazards in real-time through crowdsourced data and social media analytics.'
+              }
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
-                <Link to="/report">
-                  <AlertTriangle className="w-5 h-5 mr-2" />
-                  Report Hazard
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
-                <Link to="/dashboard">
-                  <BarChart3 className="w-5 h-5 mr-2" />
-                  View Dashboard
-                </Link>
-              </Button>
+              {/* MODIFICATION: Buttons change based on user role */}
+              {isOfficial ? (
+                <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
+                  <Link to="/admin/verify">
+                    <ShieldCheck className="w-5 h-5 mr-2" />
+                    Go to Verification Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <>
+                  <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
+                    <Link to="/report">
+                      <AlertTriangle className="w-5 h-5 mr-2" />
+                      Report Hazard
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+                    <Link to="/dashboard">
+                      <BarChart3 className="w-5 h-5 mr-2" />
+                      View Dashboard
+                    </Link>
+                  </Button>
+                </>
+              )}
             </div>
           </motion.div>
         </div>
 
-        {/* Floating Animation */}
         <motion.div
           className="absolute bottom-8 left-1/2 transform -translate-x-1/2"
           animate={{ y: [0, -10, 0] }}
@@ -108,6 +163,7 @@ const Landing = () => {
                   key={stat.label}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                   className="text-center"
                 >
@@ -134,7 +190,6 @@ const Landing = () => {
               Advanced capabilities for comprehensive ocean hazard monitoring and analysis
             </p>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
             {features.map((feature, index) => {
               const Icon = feature.icon;
@@ -143,6 +198,7 @@ const Landing = () => {
                   key={feature.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
                   <Card className="p-6 h-full shadow-card hover:shadow-elevated transition-smooth border-border">
@@ -169,6 +225,7 @@ const Landing = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
