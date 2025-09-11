@@ -1,4 +1,5 @@
 "use strict";
+// src/routes/report.routes.ts
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -32,25 +33,43 @@ var __importStar = (this && this.__importStar) || (function () {
         return result;
     };
 })();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.registerReportSocketHandlers = exports.reportRoutes = void 0;
 const express_1 = require("express");
 const reportController = __importStar(require("../controllers/report.controller"));
 const auth_middleware_1 = require("../middleware/auth.middleware");
-const upload_1 = __importDefault(require("../middleware/upload")); // --- MODIFICATION 1: Import the upload middleware ---
+// The multer upload middleware is no longer needed for report creation
+// import upload from '../middleware/upload';
+// --- MODIFICATION 1: HTTP routes no longer handle creation ---
 const reportRoutes = (io) => {
     const router = (0, express_1.Router)();
-    // --- MODIFICATION 2: Add the 'upload.single('media')' middleware ---
-    // This middleware will process a single file upload from a field named 'media'.
-    // It must be placed *before* the controller so that `req.file` is populated.
-    router.post('/', auth_middleware_1.authenticate, upload_1.default.single('media'), (req, res) => reportController.createReport(req, res, io));
-    // No changes are needed for the other routes as they don't handle file uploads.
+    // The POST route for creating a report is now handled by WebSockets and is removed.
+    // router.post('/', authenticate, upload.single('media'), (req, res) => reportController.createReport(req, res, io));
+    // These routes remain as they are standard GET/PUT requests
     router.get('/verified', (req, res) => reportController.getVerifiedReports(req, res));
     router.get('/unverified', auth_middleware_1.authenticate, (req, res) => reportController.getUnverifiedReports(req, res));
     router.put('/verify/:id', auth_middleware_1.authenticate, (req, res) => reportController.verifyReport(req, res, io));
     router.put('/reject/:id', auth_middleware_1.authenticate, (req, res) => reportController.rejectReport(req, res, io));
     return router;
 };
-exports.default = reportRoutes;
+exports.reportRoutes = reportRoutes;
+// --- MODIFICATION 2: New function to register socket event handlers ---
+/**
+ * Registers all socket event handlers related to reports.
+ * @param io The main Socket.IO server instance.
+ * @param socket The client's socket instance.
+ */
+const registerReportSocketHandlers = (io, socket) => {
+    // Listen for the 'create-report' event from a client
+    socket.on('create-report', async (data) => {
+        // Authenticate the user via the token sent in the socket payload
+        const user = await (0, auth_middleware_1.authenticateSocket)(data.token, socket);
+        if (user) {
+            // If authentication is successful, proceed to handle the report creation
+            await reportController.handleCreateReportSocket(socket, data, io);
+        }
+        // If authenticateSocket fails, it will emit an error and the process stops here.
+    });
+    // You can add other report-related socket event listeners here in the future
+};
+exports.registerReportSocketHandlers = registerReportSocketHandlers;

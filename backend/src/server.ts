@@ -7,7 +7,7 @@ import http from 'http';
 import { Server as SocketIOServer, Socket } from 'socket.io'; // Import Socket type
 import cors from 'cors';
 import mongoose from 'mongoose';
-
+import { socketAuthMiddleware } from './middleware/socket.middleware';
 import authRoutes from './routes/auth.routes';
 import { reportRoutes, registerReportSocketHandlers } from './routes/report.routes'; // <-- MODIFICATION: Import the socket handler
 import dashboardRoutes from './routes/dashboard.routes';
@@ -42,29 +42,28 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('MongoDB connected successfully.'))
   .catch(err => console.error('MongoDB connection error:', err));
 
-// --- MODIFICATION: Updated Socket.IO connection logic ---
-io.on('connection', (socket: Socket) => { // Use the imported Socket type
-  console.log('A user connected:', socket.id);
+io.use(socketAuthMiddleware);
+
+io.on('connection', (socket: Socket) => {
+  console.log(`Authenticated user connected: ${socket.user?.email} (${socket.id})`);
 
   // Automatically join the public room for general broadcasts
   socket.join('public');
 
+  // **ROLE-BASED ROOM JOINING**
+  // Since authentication is done, we can now safely check the user's role
+  if (socket.user && (socket.user.role === 'official' || socket.user.role === 'admin')) {
+    console.log(`User ${socket.user.email} joined the 'officials' room.`);
+    socket.join('officials');
+  }
+
   // Register the specific handlers for creating reports
-  // This function contains the `socket.on('create-report', ...)` listener
   registerReportSocketHandlers(io, socket);
 
-  // You can keep other general listeners here
-  socket.on('join-officials-room', () => {
-    // In a real app, you would add authentication here to ensure only officials can join
-    console.log(`Socket ${socket.id} is attempting to join officials room.`);
-    socket.join('officials');
-  });
-
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    console.log(`User disconnected: ${socket.user?.email} (${socket.id})`);
   });
 });
-// --- END MODIFICATION ---
 
 // Start server
 const PORT = process.env.PORT || 5000;

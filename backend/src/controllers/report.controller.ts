@@ -18,12 +18,7 @@ const uploadToCloudinary = (buffer: Buffer): Promise<any> => {
     uploadStream.end(buffer);
   });
 };
-interface AuthenticatedSocket extends Socket {
-  user?: {
-    _id: string;
-    // include other user properties if needed
-  };
-}
+
 
 // getFullReport remains the same
 const getFullReport = async (id: string | Types.ObjectId) => {

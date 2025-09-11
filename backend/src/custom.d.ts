@@ -1,14 +1,12 @@
 // This file extends the default Socket.IO Socket interface
 // to include a custom 'user' property for authenticated users.
 
-import 'socket.io';
+import { IUser } from '../types'; // 👈 STEP 1: Import the correct interface
 
 declare module 'socket.io' {
-  interface Socket {
-    user?: {
-      _id: string;
-      // You can add other user properties here if needed
-      // e.g., email: string; role: string;
-    };
-  }
+  interface Socket {
+    // 👇 STEP 2: Use the imported IUser interface
+    user?: IUser;
+  }
 }
+

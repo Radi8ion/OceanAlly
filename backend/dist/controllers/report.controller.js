@@ -3,8 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.createReport = void 0;
+exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.handleCreateReportSocket = void 0;
 const report_model_1 = __importDefault(require("../models/report.model"));
+const mongoose_1 = require("mongoose");
 const cloudinary_1 = __importDefault(require("../config/cloudinary")); // Import Cloudinary config
 // Helper function to upload file buffer to Cloudinary
 const uploadToCloudinary = (buffer) => {
@@ -30,34 +31,41 @@ const getFullReport = async (id) => {
     }
     return reportObj;
 };
-const createReport = async (req, res, io) => {
-    const { hazardType, severity, latitude, longitude, locationDescription, description, isEmergency, reporterName, reporterContact } = req.body;
+const handleCreateReportSocket = async (socket, // The custom type definition now handles the .user property
+data, io) => {
     try {
+        const { hazardType, severity, latitude, longitude, locationDescription, description, isEmergency, reporterName, reporterContact, media } = data;
         const reportData = {
-            hazardType, severity, description, locationDescription, isEmergency: isEmergency === 'true',
+            hazardType,
+            severity,
+            description,
+            locationDescription,
+            isEmergency,
             location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
-            reporterName, reporterContact
+            reporterName,
+            reporterContact
         };
-        // --- CLOUDINARY INTEGRATION ---
-        // If a file is uploaded, send it to Cloudinary
-        if (req.file) {
-            const uploadResult = await uploadToCloudinary(req.file.buffer);
+        if (media && media.buffer) {
+            const uploadResult = await uploadToCloudinary(Buffer.from(media.buffer));
             reportData.mediaUrl = uploadResult.secure_url;
             reportData.mediaPublicId = uploadResult.public_id;
         }
-        // --- END CLOUDINARY INTEGRATION ---
-        if (req.user)
-            reportData.reporter = req.user._id;
+        // 👇 *** THE FIX IS HERE *** 👇
+        if (socket.user) {
+            // Convert the user ID string to a MongoDB ObjectId
+            reportData.reporter = new mongoose_1.Types.ObjectId(socket.user._id);
+        }
         const newReport = await report_model_1.default.create(reportData);
         const populatedReport = await getFullReport(newReport._id);
         io.to('officials').emit('new-unverified-report', populatedReport);
-        res.status(201).json(populatedReport);
+        socket.emit('report-creation-success', populatedReport);
     }
     catch (error) {
-        res.status(500).json({ message: error.message });
+        console.error("Error creating report:", error);
+        socket.emit('report-creation-error', { message: error.message || 'Failed to create report.' });
     }
 };
-exports.createReport = createReport;
+exports.handleCreateReportSocket = handleCreateReportSocket;
 // getVerifiedReports and getUnverifiedReports remain the same
 const getVerifiedReports = async (req, res) => {
     try {
@@ -104,8 +112,11 @@ const verifyReport = async (req, res, io) => {
             return;
         }
         report.status = 'verified';
-        if (req.user)
-            report.verifiedBy = req.user._id;
+        // 👇 *** THE SAME FIX IS APPLIED HERE FOR CONSISTENCY *** 👇
+        if (req.user) {
+            // Convert the user ID string from the request object to a MongoDB ObjectId
+            report.verifiedBy = new mongoose_1.Types.ObjectId(req.user._id);
+        }
         await report.save();
         const populatedReport = await getFullReport(report._id);
         io.to('public').emit('new-verified-report', populatedReport);

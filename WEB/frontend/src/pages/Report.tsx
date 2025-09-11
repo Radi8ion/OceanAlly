@@ -4,6 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {useSocket} from "../contexts/SocketContext"
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,7 +15,7 @@ import {
 
 const Report = () => {
   const navigate = useNavigate();
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useSocket();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [hazardType, setHazardType] = useState('');
@@ -27,17 +28,11 @@ const Report = () => {
   const [reporterName, setReporterName] = useState('');
   const [reporterContact, setReporterContact] = useState('');
 
-  // --- MODIFICATION 1: Corrected Socket.IO connection and added listeners ---
+// 👇 *** STEP 3: Refactor the useEffect to only handle listeners ***
   useEffect(() => {
-    // Connect to the explicit backend URL. Use environment variables for production.
-    const serverUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-    const newSocket = io(serverUrl, {
-      withCredentials: true, // Important for sending auth cookies/tokens if needed
-    });
+    // Don't connect here. Just set up listeners on the existing connection.
+    if (!socket) return;
 
-    setSocket(newSocket);
-
-    // Listen for a success response from the server after submission
     const handleReportSuccess = (newReport: any) => {
       console.log('Report successfully submitted:', newReport);
       alert('Report submitted successfully!');
@@ -45,23 +40,21 @@ const Report = () => {
       navigate('/dashboard');
     };
 
-    // Listen for an error response from the server
     const handleReportError = (error: { message: string }) => {
       console.error('Submission error:', error);
       alert(`Submission failed: ${error.message}`);
       setIsSubmitting(false);
     };
     
-    newSocket.on('report-creation-success', handleReportSuccess);
-    newSocket.on('report-creation-error', handleReportError);
+    socket.on('report-creation-success', handleReportSuccess);
+    socket.on('report-creation-error', handleReportError);
 
-    // Clean up the connection and listeners when the component unmounts
+    // Clean up listeners when the component unmounts
     return () => {
-      newSocket.off('report-creation-success', handleReportSuccess);
-      newSocket.off('report-creation-error', handleReportError);
-      newSocket.disconnect();
+      socket.off('report-creation-success', handleReportSuccess);
+      socket.off('report-creation-error', handleReportError);
     };
-  }, [navigate]);
+  }, [socket, navigate]); // Depend on the socket instance
 
 
   const hazardTypes = [
@@ -98,10 +91,10 @@ const Report = () => {
     }
     setIsSubmitting(true);
 
-    // This token would be used by the backend socket auth middleware
+    // The token is already handled by the main socket connection,
+    // but sending it here is fine as your backend expects it in the payload.
     const token = localStorage.getItem('token');
 
-    // Consolidate form data into a single object
     const reportData = {
       hazardType,
       severity,
@@ -112,23 +105,17 @@ const Report = () => {
       isEmergency,
       reporterName,
       reporterContact,
-      token, // Send token for authentication
+      token,
     };
 
-    // If a file exists, read it as a buffer before emitting
     if (file) {
       const reader = new FileReader();
       reader.onload = (readEvent) => {
         const buffer = readEvent.target?.result;
         if (buffer) {
-          // Emit event with text data and file data
           socket.emit('create-report', {
             ...reportData,
-            media: {
-              buffer,
-              name: file.name,
-              type: file.type,
-            },
+            media: { buffer, name: file.name, type: file.type },
           });
         }
       };
@@ -139,7 +126,6 @@ const Report = () => {
       };
       reader.readAsArrayBuffer(file);
     } else {
-      // Emit event with only text data
       socket.emit('create-report', reportData);
     }
   };

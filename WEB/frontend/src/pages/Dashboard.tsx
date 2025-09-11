@@ -35,7 +35,7 @@ interface Hotspot {
   reports: number;
   risk: string;
 }
-
+import apiClient from '@/lib/api';
 const Dashboard = () => {
   const [timeRange, setTimeRange] = useState('24h');
   const [stats, setStats] = useState<Stat[]>([]);
@@ -49,8 +49,8 @@ const Dashboard = () => {
       try {
         const token = localStorage.getItem('token');
         const [statsRes, hotspotsRes] = await Promise.all([
-          axios.get('/api/v1/dashboard/stats', { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get('/api/v1/dashboard/hotspots', { headers: { Authorization: `Bearer ${token}` } }),
+          apiClient.get('/api/v1/dashboard/stats', { headers: { Authorization: `Bearer ${token}` } }),
+          apiClient.get('/api/v1/dashboard/hotspots', { headers: { Authorization: `Bearer ${token}` } }),
         ]);
 
         // Add fallbacks for stats data to prevent errors if API fields are missing
