@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-// Assuming these are custom components from your project (e.g., shadcn/ui)
-// If not, you might need to create or install them.
-// For this example, we'll assume they exist.
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +16,8 @@ import {
   Calendar,
   Activity
 } from 'lucide-react';
+import apiClient from '@/lib/api';
+import { useTranslation } from 'react-i18next';
 
 // Interfaces for our data structures
 interface Stat {
@@ -35,13 +34,13 @@ interface Hotspot {
   reports: number;
   risk: string;
 }
-import apiClient from '@/lib/api';
+
 const Dashboard = () => {
   const [timeRange, setTimeRange] = useState('24h');
   const [stats, setStats] = useState<Stat[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
-  // Set initial loading state to true as we fetch data on mount
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -55,14 +54,13 @@ const Dashboard = () => {
 
         // Add fallbacks for stats data to prevent errors if API fields are missing
         setStats([
-          { title: 'Total Reports', value: statsRes.data.totalReports || 0, trend: 'up', change: '+12%', icon: BarChart3, color: 'text-blue-500' },
-          { title: 'Active Hazards', value: statsRes.data.activeHazards || 0, trend: 'down', change: '-8%', icon: AlertTriangle, color: 'text-yellow-500' },
-          { title: 'Community Members', value: statsRes.data.communityMembers || 0, trend: 'up', change: '+24%', icon: Users, color: 'text-indigo-500' },
-          { title: 'Response Rate', value: statsRes.data.responseRate || '0%', trend: 'up', change: '+2%', icon: Activity, color: 'text-green-600' },
+          { title: t('dashboard.totalReports'), value: statsRes.data.totalReports || 0, trend: 'up', change: '+12%', icon: BarChart3, color: 'text-blue-500' },
+          { title: t('dashboard.activeHazards'), value: statsRes.data.activeHazards || 0, trend: 'down', change: '-8%', icon: AlertTriangle, color: 'text-yellow-500' },
+          { title: t('dashboard.communityMembers'), value: statsRes.data.communityMembers || 0, trend: 'up', change: '+24%', icon: Users, color: 'text-indigo-500' },
+          { title: t('dashboard.responseRate'), value: statsRes.data.responseRate || '0%', trend: 'up', change: '+2%', icon: Activity, color: 'text-green-600' },
         ]);
 
-        // --- ERROR FIX ---
-        // The error occurred because `hotspotsRes.data` was not an array.
+        // The error occurred because hotspotsRes.data was not an array.
         // We now explicitly check if the received data is an array.
         // If it's not, we log an error and set an empty array to prevent the app from crashing.
         const hotspotsData = hotspotsRes.data;
@@ -84,7 +82,7 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, []); // Empty dependency array ensures this runs once after the initial render
+  }, [t]); // Added t to dependency array since we use it in setStats
 
   const getSeverityColor = (severity: string) => {
     if (!severity) return 'bg-gray-100 text-gray-800';
@@ -97,6 +95,10 @@ const Dashboard = () => {
     }
   };
 
+  const handleRefresh = () => {
+    window.location.reload();
+  };
+
   return (
     <div className="min-h-screen bg-gray-50/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -104,25 +106,25 @@ const Dashboard = () => {
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8">
             <div>
-              <h1 className="text-3xl font-bold text-gray-800">Ocean Hazard Dashboard</h1>
-              <p className="text-gray-500 mt-1">Real-time monitoring and analytics</p>
+              <h1 className="text-3xl font-bold text-gray-800">{t('dashboard.title')}</h1>
+              <p className="text-gray-500 mt-1">{t('dashboard.subtitle')}</p>
             </div>
             <div className="flex items-center space-x-2 mt-4 md:mt-0">
               <Select value={timeRange} onValueChange={setTimeRange}>
                 <SelectTrigger className="w-36">
                   <Calendar className="w-4 h-4 mr-2 text-gray-500" />
-                  <SelectValue placeholder="Select period" />
+                  <SelectValue placeholder={t('dashboard.selectPeriod')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1h">Last Hour</SelectItem>
-                  <SelectItem value="24h">Last 24h</SelectItem>
-                  <SelectItem value="7d">Last 7 days</SelectItem>
-                  <SelectItem value="30d">Last 30 days</SelectItem>
+                  <SelectItem value="1h">{t('dashboard.lastHour')}</SelectItem>
+                  <SelectItem value="24h">{t('dashboard.last24h')}</SelectItem>
+                  <SelectItem value="7d">{t('dashboard.last7days')}</SelectItem>
+                  <SelectItem value="30d">{t('dashboard.last30days')}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+              <Button variant="outline" size="sm" onClick={handleRefresh}>
                 <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
+                {t('dashboard.refresh')}
               </Button>
             </div>
           </div>
@@ -162,24 +164,24 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center text-xl">
                 <Waves className="w-6 h-6 mr-3 text-blue-500" />
-                <span>Hazard Hotspots</span>
+                <span>{t('dashboard.hazardHotspots')}</span>
               </CardTitle>
-              <CardDescription>Areas with the highest concentration of reported hazards.</CardDescription>
+              <CardDescription>{t('dashboard.hotspotsDescription')}</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left py-3 px-4 font-semibold text-gray-600">Location</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-600">Reports</th>
-                      <th className="text-left py-3 px-4 font-semibold text-gray-600">Risk Level</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-600">{t('dashboard.location')}</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-600">{t('dashboard.reports')}</th>
+                      <th className="text-left py-3 px-4 font-semibold text-gray-600">{t('dashboard.riskLevel')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={3} className="text-center py-8 text-gray-500">Loading hotspots...</td>
+                        <td colSpan={3} className="text-center py-8 text-gray-500">{t('dashboard.loadingHotspots')}</td>
                       </tr>
                     ) : hotspots.length > 0 ? (
                       hotspots.map((hotspot, index) => (
@@ -193,14 +195,14 @@ const Dashboard = () => {
                           <td className="py-4 px-4 text-gray-700">{hotspot.reports}</td>
                           <td className="py-4 px-4">
                             <Badge variant="secondary" className={`font-semibold ${getSeverityColor(hotspot.risk)}`}>
-                              {hotspot.risk}
+                              {t(`dashboard.${hotspot.risk.toLowerCase()}`) || hotspot.risk}
                             </Badge>
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={3} className="text-center py-8 text-gray-500">No hazard hotspots to display.</td>
+                        <td colSpan={3} className="text-center py-8 text-gray-500">{t('dashboard.noHotspots')}</td>
                       </tr>
                     )}
                   </tbody>

@@ -6,12 +6,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.handleCreateReportSocket = void 0;
 const report_model_1 = __importDefault(require("../models/report.model"));
 const mongoose_1 = require("mongoose");
-const cloudinary_1 = __importDefault(require("../config/cloudinary")); // Import Cloudinary config
-// Helper function to upload file buffer to Cloudinary
+const cloudinary_1 = __importDefault(require("../config/cloudinary"));
 const uploadToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
-        const uploadStream = cloudinary_1.default.uploader.upload_stream({ resource_type: 'auto', folder: 'ocean_reports' }, // Optional: organize uploads in a folder
-        (error, result) => {
+        const uploadStream = cloudinary_1.default.uploader.upload_stream({ resource_type: 'auto', folder: 'ocean_reports' }, (error, result) => {
             if (error)
                 return reject(error);
             resolve(result);
@@ -19,7 +17,6 @@ const uploadToCloudinary = (buffer) => {
         uploadStream.end(buffer);
     });
 };
-// getFullReport remains the same
 const getFullReport = async (id) => {
     const report = await report_model_1.default.findById(id).populate('reporter', 'firstName lastName');
     if (!report)
@@ -31,8 +28,7 @@ const getFullReport = async (id) => {
     }
     return reportObj;
 };
-const handleCreateReportSocket = async (socket, // The custom type definition now handles the .user property
-data, io) => {
+const handleCreateReportSocket = async (socket, data, io) => {
     try {
         const { hazardType, severity, latitude, longitude, locationDescription, description, isEmergency, reporterName, reporterContact, media } = data;
         const reportData = {
@@ -50,9 +46,7 @@ data, io) => {
             reportData.mediaUrl = uploadResult.secure_url;
             reportData.mediaPublicId = uploadResult.public_id;
         }
-        // 👇 *** THE FIX IS HERE *** 👇
         if (socket.user) {
-            // Convert the user ID string to a MongoDB ObjectId
             reportData.reporter = new mongoose_1.Types.ObjectId(socket.user._id);
         }
         const newReport = await report_model_1.default.create(reportData);
@@ -66,7 +60,6 @@ data, io) => {
     }
 };
 exports.handleCreateReportSocket = handleCreateReportSocket;
-// getVerifiedReports and getUnverifiedReports remain the same
 const getVerifiedReports = async (req, res) => {
     try {
         const reports = await report_model_1.default.find({ status: 'verified' }).populate('reporter', 'firstName lastName').sort({ createdAt: -1 });
@@ -103,7 +96,6 @@ const getUnverifiedReports = async (req, res) => {
     }
 };
 exports.getUnverifiedReports = getUnverifiedReports;
-// verifyReport remains the same
 const verifyReport = async (req, res, io) => {
     try {
         const report = await report_model_1.default.findById(req.params.id);
@@ -112,10 +104,8 @@ const verifyReport = async (req, res, io) => {
             return;
         }
         report.status = 'verified';
-        // 👇 *** THE SAME FIX IS APPLIED HERE FOR CONSISTENCY *** 👇
         if (req.user) {
-            // Convert the user ID string from the request object to a MongoDB ObjectId
-            report.verifiedBy = new mongoose_1.Types.ObjectId(req.user._id);
+            report.verifiedBy = req.user._id;
         }
         await report.save();
         const populatedReport = await getFullReport(report._id);
@@ -135,12 +125,9 @@ const rejectReport = async (req, res, io) => {
             res.status(404).json({ message: 'Report not found' });
             return;
         }
-        // --- CLOUDINARY INTEGRATION ---
-        // If the report has an associated media file, delete it from Cloudinary
         if (report.mediaPublicId) {
             await cloudinary_1.default.uploader.destroy(report.mediaPublicId);
         }
-        // --- END CLOUDINARY INTEGRATION ---
         report.status = 'rejected';
         const updatedReport = await report.save();
         io.to('officials').emit('report-rejected', { reportId: updatedReport._id });

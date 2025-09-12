@@ -12,7 +12,7 @@ const userSchema = new Schema<IUser>({
   organization: { type: String },
   location: { type: String },
   // Make password optional
-  password: { type: String, select: false },
+  password: { type: String },
   role: { type: String, enum: ['citizen', 'official', 'admin'], default: 'citizen' },
   // Add provider IDs
   googleId: { type: String },
@@ -32,6 +32,7 @@ userSchema.methods.matchPassword = async function (enteredPassword: string): Pro
   // We need to fetch the password explicitly for comparison
   const user = await User.findById(this._id).select('+password');
   if (!user || !user.password) return false;
+  console.log(await bcrypt.compare(enteredPassword, user.password))
   return await bcrypt.compare(enteredPassword, user.password);
 };
 

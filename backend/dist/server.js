@@ -10,59 +10,77 @@ require("./config/passport");
 const passport_1 = __importDefault(require("passport"));
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
-const socket_io_1 = require("socket.io"); // Import Socket type
+const socket_io_1 = require("socket.io");
 const cors_1 = __importDefault(require("cors"));
 const mongoose_1 = __importDefault(require("mongoose"));
+const socket_middleware_1 = require("./middleware/socket.middleware");
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
-const report_routes_1 = require("./routes/report.routes"); // <-- MODIFICATION: Import the socket handler
+const report_routes_1 = require("./routes/report.routes");
 const dashboard_routes_1 = __importDefault(require("./routes/dashboard.routes"));
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
-exports.io = new socket_io_1.Server(server, {
+const io = new socket_io_1.Server(server, {
     cors: {
-        origin: "*", // Restrict in production
+        origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : "*",
         methods: ["GET", "POST", "PUT"]
     }
 });
-// Middleware
-app.use((0, cors_1.default)());
+exports.io = io;
+app.use((0, cors_1.default)({
+    origin: process.env.NODE_ENV === 'production' ? process.env.FRONTEND_URL : "*"
+}));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use(passport_1.default.initialize());
-// Routes
 app.use('/api/v1/auth', auth_routes_1.default);
-app.use('/api/v1/reports', (0, report_routes_1.reportRoutes)(exports.io)); // Pass io for HTTP routes (verify/reject)
+app.use('/api/v1/reports', (0, report_routes_1.reportRoutes)(io));
 app.use('/api/v1/dashboard', dashboard_routes_1.default);
-// MongoDB connection
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
 const MONGO_URI = process.env.MONGO_URI || '';
 if (!MONGO_URI) {
     console.error('FATAL ERROR: MONGO_URI is not defined in your .env file');
     process.exit(1);
 }
 mongoose_1.default.connect(MONGO_URI)
-    .then(() => console.log('MongoDB connected successfully.'))
-    .catch(err => console.error('MongoDB connection error:', err));
-// --- MODIFICATION: Updated Socket.IO connection logic ---
-exports.io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
-    // Automatically join the public room for general broadcasts
-    socket.join('public');
-    // Register the specific handlers for creating reports
-    // This function contains the `socket.on('create-report', ...)` listener
-    (0, report_routes_1.registerReportSocketHandlers)(exports.io, socket);
-    // You can keep other general listeners here
-    socket.on('join-officials-room', () => {
-        // In a real app, you would add authentication here to ensure only officials can join
-        console.log(`Socket ${socket.id} is attempting to join officials room.`);
-        socket.join('officials');
-    });
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-    });
+    .then(() => {
+    console.log('✅ MongoDB connected successfully.');
+    initializeSocketIO();
+})
+    .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
 });
-// --- END MODIFICATION ---
-// Start server
+function initializeSocketIO() {
+    io.use(socket_middleware_1.socketAuthMiddleware);
+    io.on('connection', (socket) => {
+        try {
+            console.log(`✅ Authenticated user connected: ${socket.user?.email} (${socket.id})`);
+            socket.join('public');
+            if (socket.user && (socket.user.role === 'official' || socket.user.role === 'admin')) {
+                console.log(`🏛️ User ${socket.user.email} joined the 'officials' room.`);
+                socket.join('officials');
+            }
+            (0, report_routes_1.registerReportSocketHandlers)(io, socket);
+            socket.on('disconnect', (reason) => {
+                console.log(`❌ User disconnected: ${socket.user?.email} (${socket.id}) - Reason: ${reason}`);
+            });
+            socket.on('error', (error) => {
+                console.error(`🔥 Socket error for user ${socket.user?.email}:`, error);
+            });
+        }
+        catch (error) {
+            console.error('🔥 Error in socket connection handler:', error);
+            socket.disconnect(true);
+        }
+    });
+    io.on('error', (error) => {
+        console.error('🔥 Socket.IO server error:', error);
+    });
+}
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });

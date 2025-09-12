@@ -17,7 +17,7 @@ const authenticate = async (req, res, next) => {
                 return res.status(401).json({ message: 'User not found' });
             }
             req.user = user;
-            next();
+            return next();
         }
         catch (error) {
             return res.status(401).json({ message: 'Not authorized, token failed' });
@@ -35,8 +35,12 @@ const authenticateSocket = async (token, socket) => {
     }
     try {
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-        // Attach user to the socket for use in other functions
-        socket.user = { _id: decoded.userId };
+        const user = await user_model_1.default.findById(decoded.id);
+        if (!user) {
+            socket.emit('report-creation-error', { message: 'Authentication error: User not found.' });
+            return null;
+        }
+        socket.user = user;
         return decoded;
     }
     catch (err) {

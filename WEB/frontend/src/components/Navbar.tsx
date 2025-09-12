@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { 
   BarChart3, 
@@ -9,6 +10,8 @@ import {
   Menu, 
   X,
   Globe,
+  Shield,
+  UserCheck,
 } from 'lucide-react';
 import {
   Select,
@@ -17,23 +20,50 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuth } from '../hooks/useAuth'; // Assuming you have this hook for auth status
+import { useAuth } from '../hooks/useAuth';
+import { useLanguage } from '../contexts/LanguageContext';
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { user, logout } = useAuth(); // Using the auth hook
+  const { user, logout } = useAuth();
+  const { t } = useTranslation();
+  const { currentLanguage, languages, changeLanguage } = useLanguage();
+  
+  console.log(user);
   const isOfficial = user && (user.role === 'official' || user.role === 'admin');
 
-  const navItems = [
-    { name: 'Dashboard', href: '/dashboard', icon: BarChart3, public: true },
-    isOfficial
-      ? { name: 'Verification', href: '/admin/verify', icon: AlertTriangle, public: false }
-      : { name: 'Report Hazard', href: '/report', icon: AlertTriangle, public: true },
-    { name: 'About', href: '/about', icon: Info, public: true },
-  ];
+  // Dynamic navigation items based on user role
+  const getNavItems = () => {
+    const baseItems = [
+      { name: t('navbar.dashboard'), href: '/dashboard', icon: BarChart3, public: true },
+    ];
 
+    // Add role-specific items
+    if (isOfficial) {
+      baseItems.push(
+        { name: t('navbar.verification'), href: '/admin/verify', icon: UserCheck, public: false }
+      );
+    } else {
+      baseItems.push(
+        { name: t('navbar.reportHazard'), href: '/report', icon: AlertTriangle, public: true }
+      );
+    }
+
+    // Add common items
+    baseItems.push(
+      { name: t('navbar.about'), href: '/about', icon: Info, public: true }
+    );
+
+    return baseItems;
+  };
+
+  const navItems = getNavItems();
   const isActive = (path: string) => location.pathname === path;
+
+  const handleLanguageChange = (languageCode: string) => {
+    changeLanguage(languageCode);
+  };
 
   return (
     <nav className="bg-card border-b border-border shadow-soft sticky top-0 z-50">
@@ -70,27 +100,48 @@ const Navbar = () => {
               );
             })}
             
+            {/* User Role Badge for Officials */}
+            {isOfficial && (
+              <div className="flex items-center space-x-2 px-2 py-1 bg-primary/10 rounded-md">
+                <Shield className="w-3 h-3 text-primary" />
+                <span className="text-xs font-medium text-primary capitalize">
+                  {t(`navbar.${user?.role}`)}
+                </span>
+              </div>
+            )}
+            
             {/* Language Selector */}
-            <Select defaultValue="en">
-              <SelectTrigger className="w-32 h-9 border-muted">
+            <Select value={currentLanguage.code} onValueChange={handleLanguageChange}>
+              <SelectTrigger className="w-40 h-9 border-muted">
                 <Globe className="w-4 h-4 mr-2" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-                <SelectItem value="hi">हिंदी</SelectItem>
-                <SelectItem value="bn">বাংলা</SelectItem>
-                <SelectItem value="ta">தமிழ்</SelectItem>
+                {languages.map((language) => (
+                  <SelectItem key={language.code} value={language.code}>
+                    <div className="flex items-center space-x-2">
+                      <span>{language.flag}</span>
+                      <span>{language.nativeName}</span>
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
             {/* Auth Buttons */}
             {user ? (
-                 <Button variant="ghost" size="sm" onClick={logout}>Logout</Button>
-            ) : (
-                <Button asChild size="sm">
-                    <Link to="/login">Login</Link>
+              <div className="flex items-center space-x-3">
+                <span className="text-sm text-muted-foreground">
+                  {t('navbar.welcome')}, {user.firstName || user.name}
+                </span>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  {t('navbar.logout')}
                 </Button>
+              </div>
+            ) : (
+              <Button asChild size="sm">
+                <Link to="/login">{t('navbar.login')}</Link>
+              </Button>
             )}
           </div>
 
@@ -114,6 +165,23 @@ const Navbar = () => {
             className="md:hidden py-4 border-t border-border"
           >
             <div className="space-y-2">
+              {/* User Info for Mobile */}
+              {user && (
+                <div className="px-4 py-2 mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-medium">
+                      {user.firstName || user.name}
+                    </span>
+                    {isOfficial && (
+                      <div className="flex items-center space-x-1 px-2 py-1 bg-primary/10 rounded text-xs">
+                        <Shield className="w-3 h-3 text-primary" />
+                        <span className="text-primary capitalize">{t(`navbar.${user.role}`)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {navItems.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -132,26 +200,43 @@ const Navbar = () => {
                   </Link>
                 );
               })}
+              
               <div className="px-4 py-2">
-                 {user ? (
-                    <Button variant="outline" className="w-full" onClick={() => {logout(); setIsOpen(false);}}>Logout</Button>
+                {user ? (
+                  <Button 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={() => {
+                      logout(); 
+                      setIsOpen(false);
+                    }}
+                  >
+                    {t('navbar.logout')}
+                  </Button>
                 ) : (
-                    <Button className="w-full" asChild>
-                        <Link to="/login" onClick={() => setIsOpen(false)}>Login</Link>
-                    </Button>
+                  <Button className="w-full" asChild>
+                    <Link to="/login" onClick={() => setIsOpen(false)}>
+                      {t('navbar.login')}
+                    </Link>
+                  </Button>
                 )}
               </div>
+              
               <div className="px-4 py-2">
-                <Select defaultValue="en">
+                <Select value={currentLanguage.code} onValueChange={handleLanguageChange}>
                   <SelectTrigger className="w-full">
                     <Globe className="w-4 h-4 mr-2" />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="en">English</SelectItem>
-                    <SelectItem value="hi">हिंदी</SelectItem>
-                    <SelectItem value="bn">বাংলা</SelectItem>
-                    <SelectItem value="ta">தமிழ்</SelectItem>
+                    {languages.map((language) => (
+                      <SelectItem key={language.code} value={language.code}>
+                        <div className="flex items-center space-x-2">
+                          <span>{language.flag}</span>
+                          <span>{language.nativeName}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

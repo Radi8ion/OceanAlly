@@ -5,14 +5,19 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev:watch": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/server.ts",
-    "dev": "npm run build && npm run start"
+    "dev:watch": "nodemon --watch \"src/**/*.ts\" --exec ts-node src/server.ts",
+    "dev": "npm run build && npm run start",
+    "dev:direct": "ts-node src/server.ts",
+    "dev:nodemon": "nodemon src/server.ts",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "Backend for the Ocean Safety Portal",
   "dependencies": {
+    "@types/multer": "^2.0.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.5",
@@ -21,6 +26,7 @@
     "express-async-handler": "^1.2.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.0",
+    "multer": "^2.0.2",
     "passport": "^0.7.0",
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
@@ -37,6 +43,13 @@
     "@types/passport-google-oauth20": "^2.0.16",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.9.2"
+  },
+  "nodemonConfig": {
+    "ext": "ts",
+    "env": {
+      "NODE_ENV": "development"
+    },
+    "delay": 2000
   }
 }

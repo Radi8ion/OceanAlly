@@ -1,45 +1,72 @@
+// src/middleware/socket.middleware.ts
 import { Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import User from '../models/user.model';
-import { IUser } from '../types'; // Adjust import path if necessary
+import User from '../models/user.model'; // Adjust import path as needed
 
-/**
- * Socket.IO middleware for authenticating users via JWT.
- * It verifies the token provided in the socket's handshake query.
- * If valid, it attaches the user object to the socket for use in event handlers.
- * @param socket The client's socket instance.
- * @param next The function to call to pass control to the next middleware or event handler.
- */
-export const socketAuthMiddleware = async (socket: Socket, next: (err?: Error) => void) => {
+interface DecodedToken {
+  id: string; // Changed from _id to id to match your JWT structure
+  iat: number;
+  exp: number;
+}
+
+export const socketAuthMiddleware = async (socket: Socket, next: Function) => {
   try {
-    // The standard way to pass auth details is via `socket.handshake.auth`
-    const token = socket.handshake.auth.token;
-
+    // Get token from handshake auth or headers
+    const token = socket.handshake.auth?.token || 
+                  socket.handshake.headers?.authorization?.replace('Bearer ', '') ||
+                  socket.handshake.query?.token; // Also check query params
+    
+    console.log('🔍 Socket token check:', {
+      authToken: socket.handshake.auth?.token ? 'Present' : 'Missing',
+      headerToken: socket.handshake.headers?.authorization ? 'Present' : 'Missing',
+      queryToken: socket.handshake.query?.token ? 'Present' : 'Missing',
+      finalToken: token ? 'Found' : 'Not found'
+    });
+    
     if (!token) {
-      // Create a new Error object for failed authentication
-      return next(new Error('Authentication error: No token provided.'));
+      console.log('❌ Socket connection rejected: No token provided');
+      return next(new Error('Authentication error: No token provided'));
     }
 
-    // Verify the JWT token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
+    // Verify JWT token
+    const JWT_SECRET = process.env.JWT_SECRET;
+    if (!JWT_SECRET) {
+      console.error('❌ JWT_SECRET not found in environment variables');
+      return next(new Error('Server configuration error'));
+    }
 
-    // Find the user in the database based on the token's ID
-    const user = await User.findById(decoded.id).select('-password');
-
+    const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
+    console.log('🔍 Decoded JWT for socket:', decoded);
+    
+    // Find user in database using the correct field name
+    const user = await User.findById(decoded.id).select('-password'); // Changed from decoded._id to decoded.id
     if (!user) {
-      return next(new Error('Authentication error: User not found.'));
+      console.log('❌ Socket connection rejected: User not found for ID:', decoded.id);
+      return next(new Error('Authentication error: User not found'));
     }
 
-    // 👈 *** THE IMPORTANT PART ***
-    // Attach the user object to the socket instance for future use
-    socket.user = user as IUser;
+    // Attach user to socket
+    socket.user = {
+      _id: user._id.toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      name: `${user.firstName} ${user.lastName}`
+    };
 
-    // Grant connection
+    console.log(`✅ Socket authenticated for user: ${user.email} (${user.role})`);
     next();
-
+    
   } catch (error) {
-    // If token is invalid or any other error occurs, deny connection
-    console.error('Socket authentication failed:', error);
-    return next(new Error('Authentication error: Invalid token.'));
+    console.error('❌ Socket authentication error:', error);
+    
+    if (error instanceof jwt.JsonWebTokenError) {
+      return next(new Error('Authentication error: Invalid token'));
+    } else if (error instanceof jwt.TokenExpiredError) {
+      return next(new Error('Authentication error: Token expired'));
+    } else {
+      return next(new Error('Authentication error: Server error'));
+    }
   }
 };
