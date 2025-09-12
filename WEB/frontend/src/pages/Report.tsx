@@ -1,17 +1,27 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useSocket } from "../contexts/SocketContext";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useTranslation } from 'react-i18next';
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useTranslation } from "react-i18next";
 import {
-  Upload, MapPin, AlertTriangle, Camera, Video, Clock, CheckCircle, Waves, Wind, Zap, Thermometer
-} from 'lucide-react';
+  Upload,
+  MapPin,
+  AlertTriangle,
+  Camera,
+  Video,
+  Clock,
+  CheckCircle,
+  Waves,
+  Wind,
+  Zap,
+  Thermometer,
+} from "lucide-react";
 
 const Report = () => {
   const { t } = useTranslation();
@@ -19,74 +29,68 @@ const Report = () => {
   const { socket } = useSocket();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [hazardType, setHazardType] = useState('');
-  const [severity, setSeverity] = useState('');
-  const [latitude, setLatitude] = useState('');
-  const [longitude, setLongitude] = useState('');
-  const [locationDescription, setLocationDescription] = useState('');
-  const [description, setDescription] = useState('');
+  const [hazardType, setHazardType] = useState("");
+  const [severity, setSeverity] = useState("");
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [locationDescription, setLocationDescription] = useState("");
+  const [description, setDescription] = useState("");
   const [isEmergency, setIsEmergency] = useState(false);
-  const [reporterName, setReporterName] = useState('');
-  const [reporterContact, setReporterContact] = useState('');
+  const [reporterName, setReporterName] = useState("");
+  const [reporterContact, setReporterContact] = useState("");
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleReportSuccess = (newReport: any) => {
-      alert(t('report.submitting') + ' ' + t('report.submitReport'));
+      alert(t("report.submitSuccess"));
       setIsSubmitting(false);
-      navigate('/dashboard');
+      navigate("/dashboard");
     };
 
     const handleReportError = (error: { message: string }) => {
-      alert(`${t('common.error')}: ${error.message}`);
+      alert(`${t("common.error")}: ${error.message}`);
       setIsSubmitting(false);
     };
-    
-    socket.on('report-creation-success', handleReportSuccess);
-    socket.on('report-creation-error', handleReportError);
+
+    socket.on("report-creation-success", handleReportSuccess);
+    socket.on("report-creation-error", handleReportError);
 
     return () => {
-      socket.off('report-creation-success', handleReportSuccess);
-      socket.off('report-creation-error', handleReportError);
+      socket.off("report-creation-success", handleReportSuccess);
+      socket.off("report-creation-error", handleReportError);
     };
   }, [socket, navigate, t]);
 
-  const hazardTypes = [
-    { value: 'tsunami', label: t('hazards.tsunami'), icon: Waves, color: 'destructive' },
-    { value: 'cyclone', label: t('hazards.cyclone'), icon: Wind, color: 'warning' },
-    { value: 'pollution', label: t('hazards.pollution'), icon: AlertTriangle, color: 'destructive' },
-    { value: 'algae', label: t('hazards.algae'), icon: Thermometer, color: 'warning' },
-    { value: 'debris', label: t('hazards.debris'), icon: AlertTriangle, color: 'secondary' },
-    { value: 'lightning', label: t('hazards.lightning'), icon: Zap, color: 'warning' },
-    { value: 'other', label: t('hazards.other'), icon: AlertTriangle, color: 'secondary' },
-  ];
-
-  const severityLevels = [
-    { value: 'low', label: t('severity.low'), color: 'bg-green-100 text-green-800' },
-    { value: 'medium', label: t('severity.medium'), color: 'bg-yellow-100 text-yellow-800' },
-    { value: 'high', label: t('severity.high'), color: 'bg-orange-100 text-orange-800' },
-    { value: 'critical', label: t('severity.critical'), color: 'bg-red-100 text-red-800' },
-  ];
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
-    } else {
-      setFile(null);
+  const handleFetchCoordinates = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
     }
+    setIsFetchingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setLatitude(latitude.toString());
+        setLongitude(longitude.toString());
+        setIsFetchingLocation(false);
+      },
+      (error) => {
+        alert("Could not get your location. Please check your browser permissions.");
+        setIsFetchingLocation(false);
+      }
+    );
   };
-
+  
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!socket || !socket.connected) {
-      alert(t('common.error') + ': Not connected to server');
+      alert(t("common.error") + ": Not connected to server");
       return;
     }
     setIsSubmitting(true);
-
-    const token = localStorage.getItem('token');
-
+    const token = localStorage.getItem("token");
     const reportData = {
       hazardType,
       severity,
@@ -99,32 +103,56 @@ const Report = () => {
       reporterContact,
       token,
     };
-
     if (file) {
       const reader = new FileReader();
       reader.onload = (readEvent) => {
         const buffer = readEvent.target?.result;
         if (buffer) {
-          socket.emit('create-report', {
+          socket.emit("create-report", {
             ...reportData,
             media: { buffer, name: file.name, type: file.type },
           });
         }
       };
-      reader.onerror = (error) => {
-        alert(t('common.error') + ': Could not read file');
-        setIsSubmitting(false);
-      };
       reader.readAsArrayBuffer(file);
     } else {
-      socket.emit('create-report', reportData);
+      socket.emit("create-report", reportData);
+    }
+  };
+  
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFile(e.target.files[0]);
+    } else {
+      setFile(null);
     }
   };
 
+  const hazardTypes = [
+    { value: 'tsunami', label: t('hazards.tsunami'), icon: Waves },
+    { value: 'cyclone', label: t('hazards.cyclone'), icon: Wind },
+    { value: 'pollution', label: t('hazards.pollution'), icon: AlertTriangle },
+    { value: 'algae', label: t('hazards.algae'), icon: Thermometer },
+    { value: 'debris', label: t('hazards.debris'), icon: AlertTriangle },
+    { value: 'lightning', label: t('hazards.lightning'), icon: Zap },
+    { value: 'other', label: t('hazards.other'), icon: AlertTriangle },
+  ];
+
+  const severityLevels = [
+    { value: 'low', label: t('severity.low'), color: 'bg-green-100 text-green-800' },
+    { value: 'medium', label: t('severity.medium'), color: 'bg-yellow-100 text-yellow-800' },
+    { value: 'high', label: t('severity.high'), color: 'bg-orange-100 text-orange-800' },
+    { value: 'critical', label: t('severity.critical'), color: 'bg-red-100 text-red-800' },
+  ];
+  
   return (
     <div className="min-h-screen bg-gradient-subtle py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 bg-gradient-ocean rounded-xl flex items-center justify-center">
@@ -144,7 +172,6 @@ const Report = () => {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Hazard Type */}
                 <div className="space-y-3">
                   <Label className="text-base font-medium">{t('report.hazardType')}</Label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -152,9 +179,7 @@ const Report = () => {
                       const Icon = hazard.icon;
                       return (
                         <label key={hazard.value} className="relative flex items-center space-x-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-muted transition-smooth">
-                          <input type="radio" name="hazardType" value={hazard.value} className="sr-only"
-                            required checked={hazardType === hazard.value} onChange={() => setHazardType(hazard.value)}
-                          />
+                          <input type="radio" name="hazardType" value={hazard.value} className="sr-only" required checked={hazardType === hazard.value} onChange={() => setHazardType(hazard.value)} />
                           <Icon className="w-5 h-5 text-primary" />
                           <span className="text-sm font-medium">{hazard.label}</span>
                         </label>
@@ -163,7 +188,6 @@ const Report = () => {
                   </div>
                 </div>
 
-                {/* Severity */}
                 <div className="space-y-3">
                   <Label htmlFor="severity" className="text-base font-medium">{t('report.severityLevel')}</Label>
                   <Select value={severity} onValueChange={setSeverity} required>
@@ -181,47 +205,43 @@ const Report = () => {
                   </Select>
                 </div>
 
-                {/* Latitude / Longitude / Location / Description */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="latitude">{t('report.latitude')}</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="latitude" type="number" step="any" placeholder="19.0760" className="pl-10"
-                        required value={latitude} onChange={(e) => setLatitude(e.target.value)}
-                      />
+                      <Input id="latitude" type="number" step="any" placeholder="19.0760" className="pl-10" required value={latitude} onChange={(e) => setLatitude(e.target.value)} />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="longitude">{t('report.longitude')}</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="longitude" type="number" step="any" placeholder="72.8777" className="pl-10"
-                        required value={longitude} onChange={(e) => setLongitude(e.target.value)}
-                      />
+                      <Input id="longitude" type="number" step="any" placeholder="72.8777" className="pl-10" required value={longitude} onChange={(e) => setLongitude(e.target.value)} />
                     </div>
                   </div>
                 </div>
+
+                <div className="my-2">
+                  <Button type="button" variant="outline" onClick={handleFetchCoordinates} disabled={isFetchingLocation}>
+                    <MapPin className="w-4 h-4 mr-2" />
+                    {isFetchingLocation ? 'Fetching...' : 'Fetch My Location'}
+                  </Button>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="location">{t('report.locationDescription')}</Label>
-                  <Input id="location" placeholder="e.g., Near Mumbai Harbor, 2km from shore" required
-                    value={locationDescription} onChange={(e) => setLocationDescription(e.target.value)}
-                  />
+                  <Input id="location" placeholder="e.g., Near Mumbai Harbor, 2km from shore" required value={locationDescription} onChange={(e) => setLocationDescription(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">{t('report.hazardDescription')}</Label>
-                  <Textarea id="description" placeholder="Describe what you observed..." className="min-h-[120px]"
-                    required value={description} onChange={(e) => setDescription(e.target.value)}
-                  />
+                  <Textarea id="description" placeholder="Describe what you observed..." className="min-h-[120px]" required value={description} onChange={(e) => setDescription(e.target.value)} />
                 </div>
 
-                {/* Media Upload */}
                 <div className="space-y-3">
                   <Label className="text-base font-medium">{t('report.uploadMedia')}</Label>
                   <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden"
-                      id="media-upload"
-                    />
+                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden" id="media-upload" />
                     <label htmlFor="media-upload" className="cursor-pointer">
                       <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-sm text-muted-foreground mb-2">{t('report.clickToUpload')}</p>
@@ -241,37 +261,21 @@ const Report = () => {
                     </div>
                   )}
                 </div>
-
-                {/* Reporter Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="reporterName">{t('report.yourName')}</Label>
-                    <Input id="reporterName" placeholder="John Doe"
-                      value={reporterName} onChange={(e) => setReporterName(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reporterContact">{t('report.contactNumber')}</Label>
-                    <Input id="reporterContact" type="tel" placeholder="+91 98765 43210"
-                      value={reporterContact} onChange={(e) => setReporterContact(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                {/* Emergency Checkbox */}
-                <div className="flex items-start space-x-3 p-4 bg-warning/10 border border-warning/20 rounded-lg">
-                  <input type="checkbox" id="emergency" className="mt-1 rounded border-border"
-                    checked={isEmergency} onChange={(e) => setIsEmergency(e.target.checked)}
-                  />
-                  <div>
-                    <label htmlFor="emergency" className="text-sm font-medium text-warning-foreground">
-                      {t('report.emergency')}
-                    </label>
-                    <p className="text-xs text-muted-foreground mt-1">{t('report.emergencyDescription')}</p>
-                  </div>
-                </div>
-
-                {/* Buttons */}
+{/* Reporter Info */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div className="space-y-2">
+    <Label htmlFor="reporterName">{t('report.yourName')}</Label>
+    <Input id="reporterName" placeholder="John Doe"
+      value={reporterName} onChange={(e) => setReporterName(e.target.value)}
+    />
+  </div>
+  <div className="space-y-2">
+    <Label htmlFor="reporterContact">{t('report.contactNumber')}</Label>
+    <Input id="reporterContact" type="tel" placeholder="+91 98765 43210"
+      value={reporterContact} onChange={(e) => setReporterContact(e.target.value)}
+    />
+  </div>
+</div>
                 <div className="flex justify-end space-x-4">
                   <Button type="button" variant="outline" onClick={() => navigate('/dashboard')}>{t('report.cancel')}</Button>
                   <Button type="submit" disabled={isSubmitting} className="px-8">

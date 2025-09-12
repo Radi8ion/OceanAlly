@@ -16,6 +16,7 @@ import {
   MapPin,
   ShieldCheck // MODIFICATION: Added icon for admin button
 } from 'lucide-react';
+import apiClient from '@/lib/api';
 
 
 const Landing = () => {
@@ -54,7 +55,7 @@ const Landing = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const response = await axios.get('/api/v1/dashboard/stats');
+        const response = await apiClient.get('/api/v1/dashboard/stats');
         const data = response.data;
         
         // MODIFICATION: Added checks to prevent NaN values.

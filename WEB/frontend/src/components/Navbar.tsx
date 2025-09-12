@@ -75,7 +75,7 @@ const Navbar = () => {
               <BarChart3 className="w-5 h-5 text-primary-foreground" />
             </div>
             <div className="hidden sm:block">
-              <span className="text-lg font-semibold text-foreground">OceanGuard</span>
+              <span className="text-lg font-semibold text-foreground">OceanAlly</span>
               <div className="text-xs text-muted-foreground">Ministry of Earth Sciences</div>
             </div>
           </Link>

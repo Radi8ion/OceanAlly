@@ -4,7 +4,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { IReport } from '../types';
 import { Types } from 'mongoose';
 import cloudinary from '../config/cloudinary'; // Import Cloudinary config
-
+import axios from "axios";
 // Helper function to upload file buffer to Cloudinary
 const uploadToCloudinary = (buffer: Buffer): Promise<any> => {
   return new Promise((resolve, reject) => {
@@ -49,7 +49,22 @@ export const handleCreateReportSocket = async (
       reporterName,
       reporterContact
     };
-
+    
+      if (description && description.trim()) {
+        try {
+            const analysisResponse = await axios.post('http://localhost:5001/process-text', {
+                description: description
+            });
+            //@ts-ignore
+            const { classification, sentiment } = analysisResponse.data;
+            reportData.classification = classification;
+            reportData.sentiment = sentiment;
+            
+        } catch (mlError) {
+            console.error("Could not process text with ML service:", mlError);
+            // Decide if you want to fail or continue without the analysis
+        }
+    }
     if (media && media.buffer) {
       const uploadResult = await uploadToCloudinary(Buffer.from(media.buffer));
       reportData.mediaUrl = uploadResult.secure_url;

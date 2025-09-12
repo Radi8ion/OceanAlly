@@ -7,6 +7,7 @@ exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exp
 const report_model_1 = __importDefault(require("../models/report.model"));
 const mongoose_1 = require("mongoose");
 const cloudinary_1 = __importDefault(require("../config/cloudinary"));
+const axios_1 = __importDefault(require("axios"));
 const uploadToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary_1.default.uploader.upload_stream({ resource_type: 'auto', folder: 'ocean_reports' }, (error, result) => {
@@ -41,6 +42,19 @@ const handleCreateReportSocket = async (socket, data, io) => {
             reporterName,
             reporterContact
         };
+        if (description && description.trim()) {
+            try {
+                const analysisResponse = await axios_1.default.post('http://localhost:5001/process-text', {
+                    description: description
+                });
+                const { classification, sentiment } = analysisResponse.data;
+                reportData.classification = classification;
+                reportData.sentiment = sentiment;
+            }
+            catch (mlError) {
+                console.error("Could not process text with ML service:", mlError);
+            }
+        }
         if (media && media.buffer) {
             const uploadResult = await uploadToCloudinary(Buffer.from(media.buffer));
             reportData.mediaUrl = uploadResult.secure_url;

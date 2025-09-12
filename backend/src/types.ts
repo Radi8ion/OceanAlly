@@ -39,4 +39,14 @@ export interface IReport extends Document {
   isEmergency: boolean;
   status: 'unverified' | 'verified' | 'rejected';
   verifiedBy?: Types.ObjectId;
+   classification?: {
+    label: string;
+    confidence: number;
+  };
+  sentiment?: {
+    score: number;
+    urgency_level: string;
+  };
 }
+
+// This is now the single, authoritative definition for a Hotspot

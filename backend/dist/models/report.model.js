@@ -17,7 +17,15 @@ const reportSchema = new mongoose_1.Schema({
     mediaPublicId: { type: String },
     isEmergency: { type: Boolean, default: false },
     status: { type: String, enum: ['unverified', 'verified', 'rejected'], default: 'unverified' },
-    verifiedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' }
+    verifiedBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User' },
+    classification: {
+        label: { type: String },
+        confidence: { type: Number }
+    },
+    sentiment: {
+        score: { type: Number },
+        urgency_level: { type: String }
+    }
 }, { timestamps: true });
 reportSchema.index({ location: '2dsphere' });
 const Report = (0, mongoose_1.model)('Report', reportSchema);
