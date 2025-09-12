@@ -10,12 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Mail, Lock, User, Phone, Building, MapPin, Shield, CheckCircle } from 'lucide-react';
 import axios from 'axios';
-
+import apiClient from '@/lib/api';
+import { useAuth } from '@/hooks/useAuth';
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const navigate = useNavigate();
+  const {login} = useAuth();
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -25,10 +27,11 @@ const Auth = () => {
     const password = formData.get('password') as string;
 
     try {
-      const { data } = await axios.post('/api/v1/auth/login', { email, password });
+      const { data } = await apiClient.post('/api/v1/auth/login', { email, password });
       console.log('Login Success:', data);
       // Save token in localStorage or state
-      localStorage.setItem('token', data.token);
+      // localStorage.setItem('token', data.token);
+      login(data.token)
       alert(`Welcome ${data.name} (${data.role})`);
          navigate('/dashboard')
     } catch (err: any) {
@@ -60,8 +63,8 @@ const Auth = () => {
     try {
       const { data } = await axios.post('http://localhost:5000/api/v1/auth/register', payload);
       console.log('Register Success:', data);
-      localStorage.setItem('token', data.token);
-   
+      // localStorage.setItem('token', data.token);
+      login(data.token)
       alert(`Account created for ${data.name} (${data.role})`);
          navigate('/dashboard')
     } catch (err: any) {

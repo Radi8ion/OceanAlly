@@ -8,6 +8,11 @@ interface User {
   name: string;
   email: string;
   role: 'citizen' | 'official' | 'admin';
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  organization?: string;
+  location?: string;
 }
 
 // Define the shape of the auth context
@@ -31,25 +36,65 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Function to fetch user data from API
+  const fetchUserData = async (token: string) => {
+    try {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      const response = await axios.get('http://localhost:5000/api/v1/auth/me');
+      console.log('API Response:', response);
+      
+      // The API returns { success: true, user: { ... } }
+      if (response.data.success && response.data.user) {
+        return response.data.user;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      return null;
+    }
+  };
+
   useEffect(() => {
     const initializeAuth = async () => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          // You should verify the token with your backend for security
-          // For this example, we'll decode and assume it's valid if not expired
-          const decoded: { id: string, name: string, email: string, role: User['role'], exp: number } = jwtDecode(token);
+          // Decode token to check expiration
+          const decoded: any = jwtDecode(token);
+          console.log('JWT payload:', decoded);
+          
           if (decoded.exp * 1000 > Date.now()) {
-            setUser({ _id: decoded.id, name: decoded.name, email: decoded.email, role: decoded.role });
-            // Set token for all future axios requests
-            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            // Token is valid, fetch user data from API
+            const userData = await fetchUserData(token);
+            console.log('Fetched user data:', userData);
+            
+            if (userData) {
+              setUser({
+                _id: userData._id,
+                name: userData.name,
+                email: userData.email,
+                role: userData.role,
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                phone: userData.phone,
+                organization: userData.organization,
+                location: userData.location
+              });
+            } else {
+              // Failed to fetch user data
+              console.log('Failed to fetch user data, removing token');
+              localStorage.removeItem('token');
+              delete axios.defaults.headers.common['Authorization'];
+            }
           } else {
-            // Token is expired
+            console.log('Token is expired');
             localStorage.removeItem('token');
+            delete axios.defaults.headers.common['Authorization'];
           }
         } catch (error) {
           console.error("Invalid token:", error);
           localStorage.removeItem('token');
+          delete axios.defaults.headers.common['Authorization'];
         }
       }
       setIsLoading(false);
@@ -58,11 +103,37 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     initializeAuth();
   }, []);
 
-  const login = (token: string) => {
+  const login = async (token: string) => {
+    console.log('Login called with token');
     localStorage.setItem('token', token);
-    const decoded: { id: string, name: string, email: string, role: User['role'] } = jwtDecode(token);
-    setUser({ _id: decoded.id, name: decoded.name, email: decoded.email, role: decoded.role });
-    axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    
+    try {
+      // Fetch user data after login
+      const userData = await fetchUserData(token);
+      console.log('Login - Fetched user data:', userData);
+      
+      if (userData) {
+        setUser({
+          _id: userData._id,
+          name: userData.name,
+          email: userData.email,
+          role: userData.role,
+          firstName: userData.firstName,
+          lastName: userData.lastName,
+          phone: userData.phone,
+          organization: userData.organization,
+          location: userData.location
+        });
+      } else {
+        console.error('Failed to fetch user data during login');
+        localStorage.removeItem('token');
+        delete axios.defaults.headers.common['Authorization'];
+      }
+    } catch (error) {
+      console.error('Error during login:', error);
+      localStorage.removeItem('token');
+      delete axios.defaults.headers.common['Authorization'];
+    }
   };
 
   const logout = () => {

@@ -39,13 +39,13 @@ interface Report {
 }
 
 const fetchUnverifiedReports = async (): Promise<Report[]> =>
-  (await apiClient.get('/reports/admin/unverified')).data;
+  (await apiClient.get('/api/v1/reports/unverified')).data;
 
 const verifyReport = async (reportId: string) =>
-  (await apiClient.put(`/reports/admin/verify/${reportId}`)).data;
+  (await apiClient.put(`/api/v1/reports/verify/${reportId}`)).data;
 
 const rejectReport = async (reportId: string) =>
-  (await apiClient.put(`/reports/admin/reject/${reportId}`)).data;
+  (await apiClient.put(`/api/v1/reports/reject/${reportId}`)).data;
 
 const VerificationDashboard = () => {
   const queryClient = useQueryClient();

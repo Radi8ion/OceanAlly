@@ -21,8 +21,52 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
     try {
       const user = await User.findOne({ email });
+      console.log(user);
       if (user && (await user.matchPassword(password))) {
         res.json({ _id: user._id, name: `${user.firstName} ${user.lastName}`, email: user.email, role: user.role, token: generateToken(user._id.toString()) });
-      } else { res.status(401).json({ message: 'Invalid email or password' }); }
+
+      } else {
+         
+        res.status(401).json({ message: 'Invalid email or password' }); }
     } catch (error: any) { res.status(500).json({ message: error.message }); }
+};
+
+// @desc    Get current logged in user
+// @route   GET /api/v1/auth/me
+// @access  Private
+export const getMe = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // req.user is set by the auth middleware
+    const user = await User.findById(req.user?.id);
+    
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        name: `${user.firstName} ${user.lastName}`, // Construct full name
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        organization: user.organization,
+        location: user.location,
+        role: user.role,
+      }
+    });
+
+  } catch (error: any) {
+    console.error('GetMe error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
 };
