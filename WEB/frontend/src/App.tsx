@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-
+import ResetPassword from "./pages/ResetPassword";
 // Layout and Page Components
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -29,6 +29,7 @@ const App = () => {
           <Route path="/" element={<Layout><Landing /></Layout>} />
           <Route path="/login" element={<Layout><Auth /></Layout>} />
           <Route path="/register" element={<Layout><Auth /></Layout>} />
+          <Route path="/reset-password/:resettoken" element={<ResetPassword />} />
           <Route path="/about" element={<Layout><About /></Layout>} />
           <Route path="/auth/success" element={<AuthSuccess />} />
 
