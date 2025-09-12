@@ -12,7 +12,13 @@ export interface IUser extends Document {
   role: 'citizen' | 'official' | 'admin';
    googleId?:string;
   facebookId?:string;
+
+  // Password Reset Fields
+  resetPasswordToken?: string;
+  resetPasswordExpire?: Date;
+
   matchPassword(enteredPassword: string): Promise<boolean>;
+  getResetPasswordToken(): string;
 }
 
 export interface IReport extends Document {

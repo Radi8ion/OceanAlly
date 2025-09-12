@@ -7,11 +7,15 @@ import { registerUser, loginUser } from '../controllers/auth.controller';
 import { IUser } from '../types'; // Assuming IUser is exported from types
 import { getMe } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/auth.middleware';
+import { forgotPassword } from '../controllers/auth.controller';
+import { resetPassword } from '../controllers/auth.controller';
 const router = Router();
 
 // --- Local Auth ---
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/forgot-password', forgotPassword);
+router.put('/reset-password/:resettoken', resetPassword);
 router.get('/me', authenticate, getMe);
 // Helper to generate token
 const generateToken = (id: string): string => jwt.sign({ id }, process.env.JWT_SECRET!, { expiresIn: '30d' });
