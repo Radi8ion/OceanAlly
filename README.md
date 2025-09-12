@@ -1,73 +1,68 @@
-# Welcome to your Lovable project
+🌊 OceanAlly – Frontend
 
-## Project info
+This is the frontend of the OceanAlly project, built with React, Vite, TypeScript, Tailwind CSS, and shadcn-ui.
+It provides a modern, responsive, and interactive interface for citizens, analysts, and admins.
 
-**URL**: https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5
+🚀 Getting Started
+## Clone the repository
+git clone https://github.com/Radi8ion/OceanAlly.git
+cd OceanAlly/WEB/frontend
 
-## How can I edit this code?
+## Install dependencies
 
-There are several ways of editing your application.
+Make sure you have Node.js (>=18) and npm installed.
+Then run:
 
-**Use Lovable**
+npm install
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+## Run the development server
 npm run dev
-```
+Now open your browser at 👉 http://localhost:5173
 
-**Edit a file directly in GitHub**
+## Build for production
+npm run build
+This will create an optimized production build inside the dist/ folder.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Preview the production build
+npm run preview
 
-**Use GitHub Codespaces**
+🛠️ Tech Stack
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+-React (UI library)
+-Vite (bundler & dev server)
+-TypeScript (type safety)
+-Tailwind CSS (utility-first styling)
+-shadcn-ui (accessible UI components)
+-React-i18next (multilingual support)
 
-## What technologies are used for this project?
+📂 Project Structure
+frontend/
+ ├── public/            # Static assets
+ ├── src/               # React components, pages, hooks
+ │   ├── components/    # Reusable UI components
+ │   ├── pages/         # Route-based pages
+ │   ├── i18n/          # Translations & multilingual setup
+ │   └── utils/         # Helpers
+ ├── package.json
+ ├── vite.config.ts
+ └── tailwind.config.ts
 
-This project is built with:
+🌍 Features Implemented
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+-Landing page with INCOIS branding
+-Real-time hazard dashboard with interactive maps & heatmaps
+-Awareness Hub with multilingual resources
+-Citizen report submission portal (photo/video upload)
+-Role-based dashboards (citizens, analysts, officials)
+-AI-powered situational analysis console
 
-## How can I deploy this project?
+👨‍💻 Development Notes
 
-Simply open [Lovable](https://lovable.dev/projects/f692fe83-b219-4271-948d-9fe7a37cf1c5) and click on Share -> Publish.
+Do not commit node_modules – dependencies are installed via npm install.
+Use feature branches (e.g., frontend-ui) and open a Pull Request for merging.
 
-## Can I connect a custom domain to my Lovable project?
+## Follow the commit style:
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+feat: added citizen report form
+fix: resolved map rendering issue
+docs: updated README with setup steps
