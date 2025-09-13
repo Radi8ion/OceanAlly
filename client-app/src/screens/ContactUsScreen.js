@@ -2,17 +2,17 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Appbar } from 'react-native-paper';
 
-const MyReportsScreen = ({ navigation }) => (
+const ContactUsScreen = ({ navigation }) => (
   <>
     <Appbar.Header>
       <Appbar.Action icon="menu" onPress={() => navigation.openDrawer()} />
-      <Appbar.Content title="My Reports" />
+      <Appbar.Content title="Contact Us" />
     </Appbar.Header>
     <View style={styles.container}>
-      <Text>My Reports Screen</Text>
+      <Text>Contact Us Screen</Text>
     </View>
   </>
 );
 
 const styles = StyleSheet.create({ container: { flex: 1, justifyContent: 'center', alignItems: 'center' }});
-export default MyReportsScreen;
+export default ContactUsScreen;
