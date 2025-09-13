@@ -1,41 +1,39 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { MoreHorizontal, CheckCircle, XCircle } from 'lucide-react';
-import apiClient from '@/lib/api';
+import { MoreHorizontal, CheckCircle, XCircle, BrainCircuit, ShieldAlert, TrendingUp, CalendarDays } from 'lucide-react';
+import apiClient from '../lib/api'; // Corrected import path
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
 
-// ✅ Define the Report interface here
+
+// --- UPDATED REPORT INTERFACE ---
 interface Report {
   _id: string;
-  reporter?: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    role: string;
-  } | string;
   reporterName?: string;
-  reporterContact?: string;
   hazardType: 'tsunami' | 'cyclone' | 'pollution' | 'algae' | 'debris' | 'lightning' | 'other';
   severity: 'low' | 'medium' | 'high' | 'critical';
   location: {
-    type: 'Point';
-    coordinates: [number, number]; // [longitude, latitude]
+    coordinates: [number, number];
   };
   locationDescription: string;
   description: string;
   mediaUrl?: string;
-  mediaPublicId?: string;
-  isEmergency: boolean;
   status: 'unverified' | 'verified' | 'rejected';
-  verifiedBy?: string;
   createdAt: string;
-  updatedAt: string;
+  classification?: {
+    label: string; // Will be "0", "1", or "2"
+    confidence: number;
+    labels_map?: { [key: string]: string }; // e.g., {"0": "not_relevant"}
+  };
+  sentiment?: {
+    score: number;
+    urgency_level: 'low' | 'medium' | 'high';
+  };
 }
 
 const fetchUnverifiedReports = async (): Promise<Report[]> =>
@@ -47,6 +45,44 @@ const verifyReport = async (reportId: string) =>
 const rejectReport = async (reportId: string) =>
   (await apiClient.put(`/api/v1/reports/reject/${reportId}`)).data;
 
+// --- IMPROVED HELPER FOR RELEVANCE ---
+const getRelevanceDisplay = (classification?: Report['classification']) => {
+    if (!classification) {
+        return { text: 'N/A', color: 'bg-slate-100 text-slate-600 border border-slate-200' };
+    }
+    const { label, labels_map } = classification;
+    let displayText = 'Unknown';
+    
+    if (labels_map && labels_map[label]) {
+        displayText = labels_map[label].replace('_', ' ');
+    } else {
+        switch (label) {
+            case '2': displayText = 'Highly Relevant'; break;
+            case '1': displayText = 'Relevant'; break;
+            case '0': displayText = 'Not Relevant'; break;
+            default: displayText = `Category ${label}`;
+        }
+    }
+
+    let color = 'bg-slate-100 text-slate-600 border border-slate-200';
+    if (label === '2') color = 'bg-red-100 text-red-700 border border-red-200';
+    else if (label === '1') color = 'bg-amber-100 text-amber-700 border border-amber-200';
+    else if (label === '0') color = 'bg-sky-100 text-sky-700 border border-sky-200';
+
+    return { text: displayText, color };
+};
+
+
+// --- IMPROVED HELPER FOR URGENCY ---
+const getUrgencyColor = (level?: 'low' | 'medium' | 'high') => {
+    switch (level) {
+        case 'high': return 'bg-red-100 text-red-700 border border-red-200';
+        case 'medium': return 'bg-amber-100 text-amber-700 border border-amber-200';
+        case 'low': return 'bg-green-100 text-green-700 border border-green-200';
+        default: return 'bg-slate-100 text-slate-600 border border-slate-200';
+    }
+}
+
 const VerificationDashboard = () => {
   const queryClient = useQueryClient();
   const { data: reports, isLoading } = useQuery<Report[]>({
@@ -57,7 +93,7 @@ const VerificationDashboard = () => {
   const verifyMutation = useMutation({
     mutationFn: verifyReport,
     onSuccess: () => {
-      toast.success("Report verified.");
+      toast.success("Report verified successfully.");
       queryClient.invalidateQueries({ queryKey: ['unverifiedReports'] });
     },
     onError: () => toast.error("Failed to verify report."),
@@ -66,85 +102,143 @@ const VerificationDashboard = () => {
   const rejectMutation = useMutation({
     mutationFn: rejectReport,
     onSuccess: () => {
-      toast.info("Report rejected.");
+      toast.info("Report has been rejected.");
       queryClient.invalidateQueries({ queryKey: ['unverifiedReports'] });
     },
     onError: () => toast.error("Failed to reject report."),
   });
 
-  if (isLoading) return <div>Loading reports for verification...</div>;
+  if (isLoading) return <div className="p-8 text-center">Loading reports for verification...</div>;
 
   return (
-    <div className="p-8">
-      <Card>
+    <div className="p-4 sm:p-6 lg:p-8 bg-slate-50 min-h-screen">
+      <Card className="border-slate-200 shadow-sm">
         <CardHeader>
-          <CardTitle>Verification Dashboard</CardTitle>
-          <CardDescription>Review and manage incoming hazard reports.</CardDescription>
+          <CardTitle className="text-2xl font-bold text-slate-800">Verification Dashboard</CardTitle>
+          <CardDescription>Review and manage incoming hazard reports from the community.</CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
-              <TableRow>
-                <TableHead>Hazard</TableHead>
-                <TableHead>Reporter</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+              <TableRow className="bg-slate-100 hover:bg-slate-100">
+                <TableHead className="font-semibold text-slate-600">Hazard</TableHead>
+                <TableHead className="font-semibold text-slate-600">Relevance</TableHead>
+                <TableHead className="font-semibold text-slate-600">Urgency</TableHead>
+                <TableHead className="font-semibold text-slate-600">Reporter</TableHead>
+                <TableHead className="font-semibold text-slate-600">Date</TableHead>
+                <TableHead className="text-right font-semibold text-slate-600">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reports && reports.length > 0 ? reports.map((report) => (
-                <TableRow key={report._id}>
-                  <TableCell>
-                    <Badge variant="outline" className="capitalize">
-                      {report.hazardType.replace('_', ' ')}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{report.reporterName || 'Anonymous'}</TableCell>
-                  <TableCell>{new Date(report.createdAt).toLocaleString()}</TableCell>
-                  <TableCell className="text-right">
-                    <Dialog>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DialogTrigger asChild>
-                            <DropdownMenuItem>View Details</DropdownMenuItem>
-                          </DialogTrigger>
-                          <DropdownMenuItem onClick={() => verifyMutation.mutate(report._id)}>
-                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Verify
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => rejectMutation.mutate(report._id)}>
-                            <XCircle className="mr-2 h-4 w-4 text-red-500" /> Reject
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Report Details</DialogTitle>
-                          <DialogDescription className="capitalize">
-                            {report.hazardType.replace('_', ' ')} reported by {report.reporterName || 'Anonymous'}
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <p><strong>Description:</strong> {report.description}</p>
-                          <p><strong>Location:</strong> {report.location.coordinates[1]}, {report.location.coordinates[0]}</p>
-                          {report.mediaUrl && (
-                            <div>
-                              <strong>Media:</strong>
-                              <img src={report.mediaUrl} alt="Hazard media" className="rounded-md mt-2 max-h-64 w-full object-contain" />
+              {reports && reports.length > 0 ? reports.map((report) => {
+                const relevance = getRelevanceDisplay(report.classification);
+                return (
+                    <TableRow key={report._id} className="even:bg-white odd:bg-slate-50/50 hover:bg-slate-100/70">
+                        <TableCell>
+                            <Badge variant="outline" className="capitalize border-slate-300 text-slate-700">
+                                {report.hazardType.replace('_', ' ')}
+                            </Badge>
+                        </TableCell>
+                        <TableCell>
+                            <Badge className={`capitalize font-medium ${relevance.color}`}>
+                                {relevance.text}
+                            </Badge>
+                        </TableCell>
+                        <TableCell>
+                            <Badge className={`capitalize font-medium ${getUrgencyColor(report.sentiment?.urgency_level)}`}>
+                                {report.sentiment?.urgency_level || 'N/A'}
+                            </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium text-slate-700">{report.reporterName || 'Anonymous'}</TableCell>
+                        <TableCell className="text-sm text-slate-500">{new Date(report.createdAt).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                        <Dialog>
+                            <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DialogTrigger asChild>
+                                <DropdownMenuItem>View Details</DropdownMenuItem>
+                                </DialogTrigger>
+                                <DropdownMenuItem onClick={() => verifyMutation.mutate(report._id)}>
+                                <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Verify
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => rejectMutation.mutate(report._id)}>
+                                <XCircle className="mr-2 h-4 w-4 text-red-500" /> Reject
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                            </DropdownMenu>
+                            <DialogContent className="max-w-3xl">
+                            <DialogHeader>
+                                <DialogTitle className="text-2xl font-bold text-slate-800">Report Details</DialogTitle>
+                                <DialogDescription className="capitalize flex items-center gap-2 text-slate-500">
+                                {report.hazardType.replace('_', ' ')} 
+                                <span className="text-slate-300">|</span> 
+                                <CalendarDays className="h-4 w-4 inline-block mr-1"/> 
+                                {new Date(report.createdAt).toLocaleString()}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <Separator className="my-4"/>
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+                                {/* Report Info */}
+                                <div className="md:col-span-3 space-y-4">
+                                    <div>
+                                        <h4 className="font-semibold text-slate-700 mb-1">Description</h4>
+                                        <p className="text-slate-600 bg-slate-50 p-3 rounded-md border">{report.description}</p>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-semibold text-slate-700 mb-1">Location Details</h4>
+                                        <p className="text-slate-600">{report.locationDescription} ({report.location.coordinates[1].toFixed(4)}, {report.location.coordinates[0].toFixed(4)})</p>
+                                    </div>
+                                    {report.mediaUrl && (
+                                        <div>
+                                        <h4 className="font-semibold text-slate-700 mb-2">Attached Media</h4>
+                                        <img src={report.mediaUrl} alt="Hazard media" className="rounded-md border-2 border-slate-200 max-h-64 w-full object-contain" />
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* ML Analysis Section */}
+                                <div className="md:col-span-2 space-y-4 rounded-lg bg-slate-100 p-4 border border-slate-200">
+                                <h3 className="font-bold text-lg flex items-center text-slate-800"><BrainCircuit className="mr-2 h-5 w-5 text-indigo-500" /> AI Analysis</h3>
+                                {report.classification && report.sentiment ? (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h4 className="font-semibold text-slate-700">Suggested Relevance</h4>
+                                            <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${relevance.color}`}>
+                                                {relevance.text}
+                                            </Badge>
+                                            <p className="text-sm text-slate-500 mt-2 flex items-center">
+                                                <TrendingUp className="h-4 w-4 mr-1.5"/>
+                                                Certainty Score: {(report.classification.confidence * 100).toFixed(1)}%
+                                            </p>
+                                        </div>
+                                         <Separator />
+                                        <div>
+                                            <h4 className="font-semibold text-slate-700">Predicted Urgency</h4>
+                                            <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${getUrgencyColor(report.sentiment.urgency_level)}`}>
+                                                <ShieldAlert className="mr-1.5 h-4 w-4"/>
+                                                {report.sentiment.urgency_level}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="text-slate-500">No AI analysis available for this report.</p>
+                                )}
+                                </div>
                             </div>
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </TableCell>
-                </TableRow>
-              )) : (
+                            </DialogContent>
+                        </Dialog>
+                        </TableCell>
+                    </TableRow>
+                )
+            }) : (
                 <TableRow>
-                  <TableCell colSpan={4} className="h-24 text-center">No pending reports.</TableCell>
+                  <TableCell colSpan={6} className="h-24 text-center text-slate-500">No pending reports at this time.</TableCell>
                 </TableRow>
               )}
             </TableBody>
@@ -156,3 +250,4 @@ const VerificationDashboard = () => {
 };
 
 export default VerificationDashboard;
+

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-import ResetPassword from "./pages/ResetPassword";
+
 // Layout and Page Components
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -15,6 +15,10 @@ import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import VerificationDashboard from "./pages/VerificationDashboard";
 import AuthSuccess from './pages/AuthSuccess';
+import ResetPassword from "./pages/ResetPassword";
+
+// Import the ChatbotOverlay component
+import ChatbotOverlay from "./pages/ChatbotOverlay";
 
 const queryClient = new QueryClient();
 
@@ -62,9 +66,14 @@ const App = () => {
           {/* Catch-all Not Found Route */}
           <Route path="*" element={<Layout><NotFound /></Layout>} />
         </Routes>
+        
+        {/* Render the ChatbotOverlay here to make it globally available */}
+        <ChatbotOverlay />
+        
       </TooltipProvider>
     </QueryClientProvider>
   );
 };
 
 export default App;
+
