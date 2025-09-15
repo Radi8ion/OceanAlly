@@ -1,72 +1,51 @@
-// src/middleware/socket.middleware.ts
 import { Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import User from '../models/user.model'; // Adjust import path as needed
+import { clerkClient } from '@clerk/clerk-sdk-node';
+import User from '../models/user.model';
+import { IUser } from '../types';
 
-interface DecodedToken {
-  id: string; // Changed from _id to id to match your JWT structure
-  iat: number;
-  exp: number;
+// Extend the Socket type to include our custom 'user' property
+declare module "socket.io" {
+  interface Socket {
+    user?: IUser;
+  }
 }
 
-export const socketAuthMiddleware = async (socket: Socket, next: Function) => {
+/**
+ * Socket.IO Authentication Middleware using Clerk
+ * This function runs for every new socket connection. It validates the Clerk token
+ * and attaches the user from our database to the socket instance.
+ */
+export const socketAuthMiddleware = async (socket: Socket, next: (err?: Error) => void) => {
   try {
-    // Get token from handshake auth or headers
-    const token = socket.handshake.auth?.token || 
-                  socket.handshake.headers?.authorization?.replace('Bearer ', '') ||
-                  socket.handshake.query?.token; // Also check query params
-    
-    console.log('🔍 Socket token check:', {
-      authToken: socket.handshake.auth?.token ? 'Present' : 'Missing',
-      headerToken: socket.handshake.headers?.authorization ? 'Present' : 'Missing',
-      queryToken: socket.handshake.query?.token ? 'Present' : 'Missing',
-      finalToken: token ? 'Found' : 'Not found'
-    });
+    // Extract token from the 'auth' object sent by the client
+    const token = socket.handshake.auth?.token;
     
     if (!token) {
       console.log('❌ Socket connection rejected: No token provided');
       return next(new Error('Authentication error: No token provided'));
     }
 
-    // Verify JWT token
-    const JWT_SECRET = process.env.JWT_SECRET;
-    if (!JWT_SECRET) {
-      console.error('❌ JWT_SECRET not found in environment variables');
-      return next(new Error('Server configuration error'));
+    // Verify the token with Clerk's backend SDK
+    const claims = await clerkClient.verifyToken(token);
+    if (!claims || !claims.sub) {
+        return next(new Error('Authentication error: Invalid token'));
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
-    console.log('🔍 Decoded JWT for socket:', decoded);
-    
-    // Find user in database using the correct field name
-    const user = await User.findById(decoded.id).select('-password'); // Changed from decoded._id to decoded.id
+    // Find the user in our database using the Clerk user ID (from the 'sub' claim)
+    const user = await User.findOne({ clerkId: claims.sub });
     if (!user) {
-      console.log('❌ Socket connection rejected: User not found for ID:', decoded.id);
-      return next(new Error('Authentication error: User not found'));
+      console.log('❌ Socket connection rejected: User not found for Clerk ID:', claims.sub);
+      return next(new Error('Authentication error: User not found in our system'));
     }
 
-    // Attach user to socket
-    socket.user = {
-      _id: user._id.toString(),
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      name: `${user.firstName} ${user.lastName}`
-    };
+    // Attach our user object to the socket instance for use in event handlers
+    socket.user = user as IUser;
 
-    console.log(`✅ Socket authenticated for user: ${user.email} (${user.role})`);
-    next();
+    console.log(`✅ Socket authenticated for user: ${user.email} (Role: ${user.role})`);
+    next(); // Connection approved
     
-  } catch (error) {
-    console.error('❌ Socket authentication error:', error);
-    
-    if (error instanceof jwt.JsonWebTokenError) {
-      return next(new Error('Authentication error: Invalid token'));
-    } else if (error instanceof jwt.TokenExpiredError) {
-      return next(new Error('Authentication error: Token expired'));
-    } else {
-      return next(new Error('Authentication error: Server error'));
-    }
+  } catch (error: any) {
+    console.error('❌ Socket authentication error:', error.message);
+    return next(new Error('Authentication error: Invalid token'));
   }
 };

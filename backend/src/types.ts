@@ -1,24 +1,16 @@
 import { Types, Document } from 'mongoose';
 
 export interface IUser extends Document {
-  _id: Types.ObjectId;
+  clerkId: string; // The link to the Clerk user
   firstName: string;
   lastName: string;
   email: string;
   phone?: string;
   organization?: string;
   location?: string;
-  password?: string;
   role: 'citizen' | 'official' | 'admin';
-   googleId?:string;
-  facebookId?:string;
-
-  // Password Reset Fields
-  resetPasswordToken?: string;
-  resetPasswordExpire?: Date;
-
-  matchPassword(enteredPassword: string): Promise<boolean>;
-  getResetPasswordToken(): string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface IReport extends Document {

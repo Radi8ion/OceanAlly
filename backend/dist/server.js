@@ -6,8 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.io = void 0;
 const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
-require("./config/passport");
-const passport_1 = __importDefault(require("passport"));
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
 const socket_io_1 = require("socket.io");
@@ -31,9 +29,8 @@ app.use((0, cors_1.default)({
 }));
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
-app.use(passport_1.default.initialize());
 app.use('/api/v1/auth', auth_routes_1.default);
-app.use('/api/v1/reports', (0, report_routes_1.reportRoutes)(io));
+app.use('/api/v1/reports', (0, report_routes_1.createReportRouter)(io));
 app.use('/api/v1/dashboard', dashboard_routes_1.default);
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -54,6 +51,7 @@ mongoose_1.default.connect(MONGO_URI)
 });
 function initializeSocketIO() {
     io.use(socket_middleware_1.socketAuthMiddleware);
+    (0, report_routes_1.registerReportSocketHandlers)(io);
     io.on('connection', (socket) => {
         try {
             console.log(`✅ Authenticated user connected: ${socket.user?.email} (${socket.id})`);
@@ -62,7 +60,6 @@ function initializeSocketIO() {
                 console.log(`🏛️ User ${socket.user.email} joined the 'officials' room.`);
                 socket.join('officials');
             }
-            (0, report_routes_1.registerReportSocketHandlers)(io, socket);
             socket.on('disconnect', (reason) => {
                 console.log(`❌ User disconnected: ${socket.user?.email} (${socket.id}) - Reason: ${reason}`);
             });

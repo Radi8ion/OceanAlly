@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { useAuth } from "@clerk/clerk-react"; // Add this import
 import {
   Card,
   CardContent,
@@ -24,6 +25,8 @@ import {
   Waves,
   Calendar,
   Activity,
+  Clock,
+  ExternalLink,
 } from "lucide-react";
 import apiClient from "@/lib/api";
 import { useTranslation } from "react-i18next";
@@ -31,12 +34,22 @@ import HotspotMap from "./HotspotMap";
 import LocationDisplay from "./LocationDisplay";
 import { Hotspot } from "@/types";
 import axios from "axios";
+import { formatDistanceToNow } from 'date-fns';
 
 interface Stat {
   title: string;
   value: string | number;
   icon: React.ElementType;
   color?: string;
+}
+
+interface Video {
+  videoId: string;
+  title: string;
+  description: string;
+  publishedAt: string;
+  thumbnail: string;
+  location: string[];
 }
 
 // A simple delay function to help with API rate limiting
@@ -46,22 +59,67 @@ const Dashboard = () => {
   const [timeRange, setTimeRange] = useState("24h");
   const [stats, setStats] = useState<Stat[]>([]);
   const [hotspots, setHotspots] = useState<Hotspot[]>([]);
+  const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
+  const [videosLoading, setVideosLoading] = useState(true);
   const { t } = useTranslation();
+  const { getToken } = useAuth(); // Add Clerk's useAuth hook
   
   // State to cache location names. Key is "lat,lon", value is the address.
   const [locationCache, setLocationCache] = useState<Record<string, string>>({});
+
+  // Fetch YouTube videos
+  const fetchYouTubeVideos = async () => {
+    setVideosLoading(true);
+    try {
+      // Remove Authorization header since Flask route doesn't require it
+    const response = await axios.get("http://localhost:5001/recent-videos?debug=true&strict=false");
+      
+      console.log("Full Response:", response);
+      console.log("Response Data:", response.data);
+      console.log("Response Status:", response.data.status);
+      console.log("Videos Array:", response.data.videos);
+      console.log("Number of Videos:", response.data.videos?.length || 0);
+      
+      if (response.data.status === 'success') {
+        setVideos(response.data.videos || []);
+      } else {
+        console.error("YouTube API Error:", response.data.message);
+        setVideos([]);
+      }
+    } catch (error) {
+      console.error("Failed to fetch YouTube videos", error);
+      setVideos([]);
+    } finally {
+      setVideosLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
       setLoading(true);
       try {
-        const token = localStorage.getItem("token");
-        const [statsRes, hotspotsRes] = await Promise.all([
-          apiClient.get("/api/v1/dashboard/stats", { headers: { Authorization: `Bearer ${token}` } }),
-          apiClient.get("/api/v1/dashboard/hotspots", { headers: { Authorization: `Bearer ${token}` } }),
-        ]);
+        // Get token from Clerk instead of localStorage
+        const token = await getToken();
+        
+        if (!token) {
+          console.error("No authentication token available");
+          setStats([]);
+          setHotspots([]);
+          return;
+        }
 
+        const [statsRes, hotspotsRes] = await Promise.all([
+          axios.get("http://localhost:5000/api/v1/dashboard/stats", { 
+            headers: { Authorization: `Bearer ${token}` } 
+          }),
+          axios.get("http://localhost:5000/api/v1/dashboard/hotspots", { 
+            headers: { Authorization: `Bearer ${token}` } 
+          }),
+        ]);
+        
+        console.log(hotspotsRes);
+        
         setStats([
           { title: t("dashboard.totalReports"), value: statsRes.data.totalReports || 0, icon: BarChart3, color: "text-blue-500" },
           { title: t("dashboard.activeHazards"), value: statsRes.data.activeHazards || 0, icon: AlertTriangle, color: "text-yellow-500" },
@@ -86,7 +144,8 @@ const Dashboard = () => {
     };
 
     fetchDashboardData();
-  }, [t]);
+    fetchYouTubeVideos();
+  }, [t, getToken]); // Add getToken to dependency array
 
   // A separate useEffect to handle fetching location names for the hotspots table
   useEffect(() => {
@@ -129,8 +188,48 @@ const Dashboard = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hotspots, loading]); // This effect runs when hotspots are loaded
 
-  const handleRefresh = () => {
-    window.location.reload();
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      const token = await getToken();
+      
+      if (!token) {
+        console.error("No authentication token available");
+        return;
+      }
+
+      const [statsRes, hotspotsRes] = await Promise.all([
+        axios.get("http://localhost:5000/api/v1/dashboard/stats", { 
+          headers: { Authorization: `Bearer ${token}` } 
+        }),
+        axios.get("http://localhost:5000/api/v1/dashboard/hotspots", { 
+          headers: { Authorization: `Bearer ${token}` } 
+        }),
+      ]);
+      
+      setStats([
+        { title: t("dashboard.totalReports"), value: statsRes.data.totalReports || 0, icon: BarChart3, color: "text-blue-500" },
+        { title: t("dashboard.activeHazards"), value: statsRes.data.activeHazards || 0, icon: AlertTriangle, color: "text-yellow-500" },
+        { title: t("dashboard.communityMembers"), value: statsRes.data.communityMembers || 0, icon: Users, color: "text-indigo-500" },
+        { title: t("dashboard.responseRate"), value: statsRes.data.responseRate || "0%", icon: Activity, color: "text-green-600" },
+      ]);
+
+      const hotspotsData = hotspotsRes.data;
+      if (Array.isArray(hotspotsData)) {
+        setHotspots(hotspotsData);
+      } else {
+        console.error("API Error: Hotspots data was not an array.", hotspotsData);
+        setHotspots([]);
+      }
+    } catch (error) {
+      console.error("Failed to refresh dashboard data", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefreshVideos = () => {
+    fetchYouTubeVideos();
   };
 
   return (
@@ -156,8 +255,8 @@ const Dashboard = () => {
                   <SelectItem value="30d">{t("dashboard.last30days")}</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" size="sm" onClick={handleRefresh}>
-                <RefreshCw className="w-4 h-4 mr-2" />
+              <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 {t("dashboard.refresh")}
               </Button>
             </div>
@@ -192,24 +291,118 @@ const Dashboard = () => {
           )}
         </motion.div>
 
-        {/* Live Hotspots Map */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }}>
-          <Card className="shadow-sm mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center text-xl">
-                <MapPin className="w-6 h-6 mr-3 text-green-600" />
-                <span>Live Hotspots Map</span>
-              </CardTitle>
-              <CardDescription>Real-time map of hazard clusters.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <HotspotMap hotspots={hotspots} />
-            </CardContent>
-          </Card>
+        {/* Map and YouTube Feed Section */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.2 }} className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+          {/* Live Hotspots Map */}
+          <div className="lg:col-span-2">
+            <Card className="shadow-sm h-full">
+              <CardHeader>
+                <CardTitle className="flex items-center text-xl">
+                  <MapPin className="w-6 h-6 mr-3 text-green-600" />
+                  <span>Live Hotspots Map</span>
+                </CardTitle>
+                <CardDescription>Real-time map of hazard clusters.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <HotspotMap hotspots={hotspots} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* YouTube Feed */}
+          <div className="lg:col-span-1">
+            <Card className="border-slate-200 shadow-sm h-full">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl font-bold text-slate-800 flex items-center">
+                    <Waves className="w-6 h-6 mr-3 text-red-500" />
+                    YouTube Feed
+                    {videos.length > 0 && (
+                      <span className="ml-2 text-sm bg-gray-200 px-2 py-1 rounded">{videos.length}</span>
+                    )}
+                  </CardTitle>
+                  <Button variant="outline" size="sm" onClick={handleRefreshVideos} disabled={videosLoading}>
+                    <RefreshCw className={`w-4 h-4 mr-2 ${videosLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+                <CardDescription>Recent coastal hazard videos from India</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {videosLoading ? (
+                  <div className="space-y-4">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="p-3 rounded-lg bg-slate-50 animate-pulse">
+                        <div className="flex items-start gap-3">
+                          <div className="w-16 h-16 bg-gray-200 rounded"></div>
+                          <div className="flex-1">
+                            <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                            <div className="h-3 bg-gray-200 rounded mb-1"></div>
+                            <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : videos.length > 0 ? (
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto">
+                    {videos.map((video, idx) => (
+                      <div key={idx} className="p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
+                        <div className="flex items-start gap-3">
+                          <img 
+                            src={video.thumbnail} 
+                            alt={video.title} 
+                            className="w-16 h-16 object-cover rounded cursor-pointer hover:opacity-80" 
+                            onClick={() => window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank')}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <h3 
+                              className="font-semibold text-slate-800 text-sm line-clamp-2 cursor-pointer hover:text-blue-600"
+                              onClick={() => window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank')}
+                            >
+                              {video.title}
+                            </h3>
+                            <p className="text-xs text-slate-600 line-clamp-2 mt-1">
+                              {video.description.length > 80 
+                                ? `${video.description.substring(0, 80)}...` 
+                                : video.description}
+                            </p>
+                            {video.location && video.location.length > 0 && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <MapPin className="w-3 h-3 text-green-600" />
+                                <span className="text-xs text-green-700 font-medium">
+                                  {video.location.join(', ')}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center justify-between mt-2">
+                              <div className="flex items-center gap-1 text-xs text-gray-500">
+                                <Clock className="w-3 h-3" />
+                                {formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })}
+                              </div>
+                              <ExternalLink 
+                                className="w-3 h-3 text-gray-400 hover:text-blue-600 cursor-pointer"
+                                onClick={() => window.open(`https://www.youtube.com/watch?v=${video.videoId}`, '_blank')}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-slate-500">
+                    <Waves className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-sm">No videos available</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </motion.div>
 
         {/* Hotspots Table */}
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}>
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center text-xl">

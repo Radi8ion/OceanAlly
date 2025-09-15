@@ -3,19 +3,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
-
+import { SignedOut,RedirectToSignIn } from "@clerk/clerk-react";
+import { useAuth, SignIn, SignUp, SignedIn } from "@clerk/clerk-react";
+import AuthSync from "./pages/AuthSync";
 // Layout and Page Components
 import Layout from "./components/Layout";
-import ProtectedRoute from "./components/ProtectedRoute";
+import RoleProtectedRoute from "./pages/RoleProtectedRoute";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Report from "./pages/Report";
-import Auth from "./pages/Auth";
+
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import VerificationDashboard from "./pages/VerificationDashboard";
-import AuthSuccess from './pages/AuthSuccess';
-import ResetPassword from "./pages/ResetPassword";
 
 // Import the ChatbotOverlay component
 import ChatbotOverlay from "./pages/ChatbotOverlay";
@@ -31,49 +31,87 @@ const App = () => {
         <Routes>
           {/* Public Routes */}
           <Route path="/" element={<Layout><Landing /></Layout>} />
-          <Route path="/login" element={<Layout><Auth /></Layout>} />
-          <Route path="/register" element={<Layout><Auth /></Layout>} />
-          <Route path="/reset-password/:resettoken" element={<ResetPassword />} />
           <Route path="/about" element={<Layout><About /></Layout>} />
-          <Route path="/auth/success" element={<AuthSuccess />} />
-
+          
+          {/* Clerk Authentication Routes - NOW with Layout (Navbar) */}
+          <Route 
+            path="/login/*" 
+            element={
+              <Layout>
+                <div className="flex justify-center items-center min-h-[calc(100vh-80px)] py-8">
+                  <SignIn path="/login" signUpUrl="/register" fallbackRedirectUrl="/dashboard"/>
+                </div>
+              </Layout>
+            } 
+          />
+          <Route 
+            path="/register/*" 
+            element={
+              <Layout>
+                <div className="flex justify-center items-center min-h-[calc(100vh-80px)] py-8">
+                  <SignUp path="/register" signInUrl="/login" fallbackRedirectUrl="/dashboard"/>
+                </div>
+              </Layout>
+            }
+          />
+          
           {/* Protected Routes */}
           <Route 
             path="/dashboard" 
             element={
-              <ProtectedRoute>
-                <Layout><Dashboard /></Layout>
-              </ProtectedRoute>
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <Layout><Dashboard /></Layout>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
             } 
           />
           <Route 
             path="/report" 
             element={
-              <ProtectedRoute>
-                <Layout><Report /></Layout>
-              </ProtectedRoute>
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <Layout><Report /></Layout>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
             } 
           />
-          <Route
-            path="/admin/verify"
+          <Route 
+            path="/admin/verify" 
             element={
-              <ProtectedRoute roles={['official', 'admin']}>
-                <Layout><VerificationDashboard /></Layout>
-              </ProtectedRoute>
-            }
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <RoleProtectedRoute roles={['official', 'admin']}>
+                      <Layout><VerificationDashboard /></Layout>
+                    </RoleProtectedRoute>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } 
           />
           
           {/* Catch-all Not Found Route */}
           <Route path="*" element={<Layout><NotFound /></Layout>} />
         </Routes>
         
-        {/* Render the ChatbotOverlay here to make it globally available */}
         <ChatbotOverlay />
-        
       </TooltipProvider>
     </QueryClientProvider>
   );
 };
 
 export default App;
-

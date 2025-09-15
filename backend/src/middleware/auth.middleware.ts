@@ -1,54 +1,79 @@
+import { ClerkExpressRequireAuth } from '@clerk/clerk-sdk-node';
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import User from '../models/user.model';
 import { IUser } from '../types';
-import { Socket } from 'socket.io';
 
-// This interface is for your Express middleware
-interface AuthRequest extends Request {
-  user?: IUser;
+// Extend the Express Request type to include the 'user' property
+declare global {
+  namespace Express {
+    export interface Request {
+      user?: IUser;
+      auth?: {
+        userId: string;
+        [key: string]: any;
+      };
+    }
+  }
 }
 
-export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
-  
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
-      const user = await User.findById(decoded.id).select('-password');
-      if (!user) {
-        return res.status(401).json({ message: 'User not found' });
-      }
-      req.user = user;
-      return next();
-    } catch (error: any) {
-      return res.status(401).json({ message: 'Not authorized, token failed' });
+/**
+ * Step 1: Protect routes with Clerk's built-in middleware.
+ * This middleware checks for a valid Clerk session token. If it's not valid,
+ * it returns a 401 Unauthorized error. If it is valid, it populates `req.auth`.
+ */
+export const protect = ClerkExpressRequireAuth();
+
+/**
+ * Step 2: Middleware to fetch and attach our internal user model.
+ * This should run *after* the `protect` middleware. It uses the `userId`
+ * from `req.auth` (which is the Clerk ID) to find the corresponding user
+ * in our own MongoDB database.
+ */
+export const attachUser = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  if (!req.auth?.userId) {
+    res.status(401).json({ message: 'Not authorized, no user ID in request.' });
+    return;
+  }
+
+  try {
+    const user = await User.findOne({ clerkId: req.auth.userId });
+
+    if (!user) {
+      // User exists in Clerk but not in our database
+      res.status(404).json({ message: 'User not found in our system.' });
+      return;
     }
-  } else {
-    return res.status(401).json({ message: 'No token provided' });
+
+    req.user = user as IUser; // Attach the user document to the request
+    next();
+  } catch (error) {
+    console.error("Error attaching user:", error);
+    res.status(500).json({ message: 'Server error while fetching user data.' });
+    return;
   }
 };
 
-// This function is for authenticating a socket connection
-export const authenticateSocket = async (token: string, socket: Socket) => {
-  if (!token) {
-    socket.emit('report-creation-error', { message: 'Authentication error: Token not provided.' });
-    return null;
-  }
-  try {
-    // Changed from decoded.userId to decoded.id to match your JWT structure
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string };
-    const user = await User.findById(decoded.id); // Changed from decoded.userId to decoded.id
-    if (!user) {
-      socket.emit('report-creation-error', { message: 'Authentication error: User not found.' });
-      return null;
+/**
+ * Step 3: Role-based authorization middleware.
+ * This is a higher-order function that takes an array of allowed roles.
+ * It checks if the `req.user.role` is included in the roles array.
+ * 
+ * @param roles - An array of strings representing allowed roles
+ */
+export const authorize = (roles: string[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user || !req.user.role) {
+      res.status(401).json({ message: 'Not authorized, user data is missing.' });
+      return;
     }
-    // Attach the full user object to the socket in a type-safe way
-    socket.user = user;
-    return decoded;
-  } catch (err) {
-    socket.emit('report-creation-error', { message: 'Authentication error: Invalid token.' });
-    return null;
-  }
+
+    if (!roles.includes(req.user.role)) {
+      res.status(403).json({ 
+        message: `Forbidden: User with role '${req.user.role}' is not authorized to access this resource.` 
+      });
+      return;
+    }
+
+    next();
+  };
 };

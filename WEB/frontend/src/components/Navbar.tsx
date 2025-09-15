@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useAuth, useUser } from '@clerk/clerk-react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { 
   BarChart3, 
@@ -20,17 +22,53 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAuth } from '../hooks/useAuth';
 import { useLanguage } from '../contexts/LanguageContext';
+import apiClient from '@/lib/api'; // Ensure this path is correct for your project
+
+// User interface to match your backend
+interface User {
+  _id: string;
+  clerkId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: 'citizen' | 'official' | 'admin';
+}
+
+// Define the fetch function to be used by react-query
+const fetchCurrentUser = async (getToken: () => Promise<string | null>): Promise<User> => {
+    const token = await getToken();
+    if (!token) {
+        throw new Error("Authentication token not found.");
+    }
+    const response = await apiClient.get('/me', {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.data.success || !response.data.user) {
+        throw new Error("Failed to fetch user data from backend.");
+    }
+    return response.data.user;
+};
+
 
 const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { signOut, isSignedIn, getToken } = useAuth(); // Added getToken
+  const { user: clerkUser } = useUser();
   const { t } = useTranslation();
   const { currentLanguage, languages, changeLanguage } = useLanguage();
   
-  console.log(user);
+  // FIXED: Added the required 'queryFn' to fetch user data.
+  // This query now knows HOW to get the data for the 'me' key.
+  const { data: user } = useQuery<User>({
+    queryKey: ['me'],
+    queryFn: () => fetchCurrentUser(getToken), // This tells react-query how to fetch the user
+    enabled: !!isSignedIn, // Only fetch if the user is signed in
+    staleTime: 15 * 60 * 1000, // Optional: Cache for 15 minutes
+    retry: 1, // Optional: Retry once on failure
+  });
+  
   const isOfficial = user && (user.role === 'official' || user.role === 'admin');
 
   // Dynamic navigation items based on user role
@@ -39,7 +77,6 @@ const Navbar = () => {
       { name: t('navbar.dashboard'), href: '/dashboard', icon: BarChart3, public: true },
     ];
 
-    // Add role-specific items
     if (isOfficial) {
       baseItems.push(
         { name: t('navbar.verification'), href: '/admin/verify', icon: UserCheck, public: false }
@@ -50,7 +87,6 @@ const Navbar = () => {
       );
     }
 
-    // Add common items
     baseItems.push(
       { name: t('navbar.about'), href: '/about', icon: Info, public: true }
     );
@@ -63,6 +99,14 @@ const Navbar = () => {
 
   const handleLanguageChange = (languageCode: string) => {
     changeLanguage(languageCode);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   return (
@@ -100,7 +144,6 @@ const Navbar = () => {
               );
             })}
             
-            {/* User Role Badge for Officials */}
             {isOfficial && (
               <div className="flex items-center space-x-2 px-2 py-1 bg-primary/10 rounded-md">
                 <Shield className="w-3 h-3 text-primary" />
@@ -110,7 +153,6 @@ const Navbar = () => {
               </div>
             )}
             
-            {/* Language Selector */}
             <Select value={currentLanguage.code} onValueChange={handleLanguageChange}>
               <SelectTrigger className="w-40 h-9 border-muted">
                 <Globe className="w-4 h-4 mr-2" />
@@ -128,18 +170,18 @@ const Navbar = () => {
               </SelectContent>
             </Select>
 
-            {/* Auth Buttons */}
-            {user ? (
+            {isSignedIn && user ? (
               <div className="flex items-center space-x-3">
                 <span className="text-sm text-muted-foreground">
-                  {t('navbar.welcome')}, {user.firstName || user.name}
+                  {t('navbar.welcome')}, {user.firstName || clerkUser?.firstName}
                 </span>
-                <Button variant="ghost" size="sm" onClick={logout}>
+                <Button variant="ghost" size="sm" onClick={handleLogout}>
                   {t('navbar.logout')}
                 </Button>
               </div>
             ) : (
               <Button asChild size="sm">
+                {/* FIXED: Changed route from /sign-in to /login */}
                 <Link to="/login">{t('navbar.login')}</Link>
               </Button>
             )}
@@ -165,12 +207,11 @@ const Navbar = () => {
             className="md:hidden py-4 border-t border-border"
           >
             <div className="space-y-2">
-              {/* User Info for Mobile */}
-              {user && (
+              {isSignedIn && user && (
                 <div className="px-4 py-2 mb-2">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm font-medium">
-                      {user.firstName || user.name}
+                      {user.firstName || clerkUser?.firstName}
                     </span>
                     {isOfficial && (
                       <div className="flex items-center space-x-1 px-2 py-1 bg-primary/10 rounded text-xs">
@@ -202,12 +243,12 @@ const Navbar = () => {
               })}
               
               <div className="px-4 py-2">
-                {user ? (
+                {isSignedIn ? (
                   <Button 
                     variant="outline" 
                     className="w-full" 
                     onClick={() => {
-                      logout(); 
+                      handleLogout(); 
                       setIsOpen(false);
                     }}
                   >
@@ -215,6 +256,7 @@ const Navbar = () => {
                   </Button>
                 ) : (
                   <Button className="w-full" asChild>
+                    {/* FIXED: Changed route from /sign-in to /login */}
                     <Link to="/login" onClick={() => setIsOpen(false)}>
                       {t('navbar.login')}
                     </Link>

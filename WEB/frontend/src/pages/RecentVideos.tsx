@@ -35,10 +35,7 @@ const RecentVideos = ({ videos, isLoading, onRefresh }) => {
                   <div>
                     <h3 className="font-semibold text-slate-800">{video.title}</h3>
                     <p className="text-sm text-slate-600">{video.description}</p>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDistanceToNow(new Date(video.publishedAt), { addSuffix: true })}
-                    </div>
+                   
                   </div>
                 </div>
               </div>

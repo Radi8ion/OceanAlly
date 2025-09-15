@@ -3,49 +3,44 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authenticateSocket = exports.authenticate = void 0;
-const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+exports.authorize = exports.attachUser = exports.protect = void 0;
+const clerk_sdk_node_1 = require("@clerk/clerk-sdk-node");
 const user_model_1 = __importDefault(require("../models/user.model"));
-const authenticate = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
-        try {
-            const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-            const user = await user_model_1.default.findById(decoded.id).select('-password');
-            if (!user) {
-                return res.status(401).json({ message: 'User not found' });
-            }
-            req.user = user;
-            return next();
-        }
-        catch (error) {
-            return res.status(401).json({ message: 'Not authorized, token failed' });
-        }
-    }
-    else {
-        return res.status(401).json({ message: 'No token provided' });
-    }
-};
-exports.authenticate = authenticate;
-const authenticateSocket = async (token, socket) => {
-    if (!token) {
-        socket.emit('report-creation-error', { message: 'Authentication error: Token not provided.' });
-        return null;
+exports.protect = (0, clerk_sdk_node_1.ClerkExpressRequireAuth)();
+const attachUser = async (req, res, next) => {
+    if (!req.auth?.userId) {
+        res.status(401).json({ message: 'Not authorized, no user ID in request.' });
+        return;
     }
     try {
-        const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET);
-        const user = await user_model_1.default.findById(decoded.id);
+        const user = await user_model_1.default.findOne({ clerkId: req.auth.userId });
         if (!user) {
-            socket.emit('report-creation-error', { message: 'Authentication error: User not found.' });
-            return null;
+            res.status(404).json({ message: 'User not found in our system.' });
+            return;
         }
-        socket.user = user;
-        return decoded;
+        req.user = user;
+        next();
     }
-    catch (err) {
-        socket.emit('report-creation-error', { message: 'Authentication error: Invalid token.' });
-        return null;
+    catch (error) {
+        console.error("Error attaching user:", error);
+        res.status(500).json({ message: 'Server error while fetching user data.' });
+        return;
     }
 };
-exports.authenticateSocket = authenticateSocket;
+exports.attachUser = attachUser;
+const authorize = (roles) => {
+    return (req, res, next) => {
+        if (!req.user || !req.user.role) {
+            res.status(401).json({ message: 'Not authorized, user data is missing.' });
+            return;
+        }
+        if (!roles.includes(req.user.role)) {
+            res.status(403).json({
+                message: `Forbidden: User with role '${req.user.role}' is not authorized to access this resource.`
+            });
+            return;
+        }
+        next();
+    };
+};
+exports.authorize = authorize;

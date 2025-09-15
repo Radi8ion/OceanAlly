@@ -3,8 +3,8 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
-import { useAuth } from '../hooks/useAuth'; // MODIFICATION: Import useAuth hook
+import { useAuth, useUser } from '@clerk/clerk-react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   AlertTriangle, 
   BarChart3, 
@@ -14,13 +14,29 @@ import {
   Shield,
   TrendingUp,
   MapPin,
-  ShieldCheck // MODIFICATION: Added icon for admin button
+  ShieldCheck 
 } from 'lucide-react';
 import apiClient from '@/lib/api';
 
+// User interface to match your backend
+interface User {
+  _id: string;
+  clerkId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: 'citizen' | 'official' | 'admin';
+}
 
 const Landing = () => {
-  const { user } = useAuth(); // MODIFICATION: Get user from auth hook
+  const { isSignedIn } = useAuth();
+  const { user: clerkUser } = useUser();
+  
+  // Get user data from react-query cache (populated by AuthSync)
+  const { data: user } = useQuery<User>({
+    queryKey: ['me'],
+    enabled: isSignedIn,
+  });
 
   const features = [
     {
@@ -58,8 +74,6 @@ const Landing = () => {
         const response = await apiClient.get('/api/v1/dashboard/stats');
         const data = response.data;
         
-        // MODIFICATION: Added checks to prevent NaN values.
-        // This ensures that if the API returns non-numeric data, we fall back to 0.
         const formatNumber = (num: number) => {
           if (typeof num !== 'number') return '0';
           return new Intl.NumberFormat('en-IN').format(num);
@@ -102,7 +116,6 @@ const Landing = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
           >
-            {/* MODIFICATION: Title changes based on user role */}
             <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">
               {isOfficial ? 'Welcome, Official' : 'Ocean Hazard Reporting'}
               <span className="block text-primary-light">
@@ -116,7 +129,6 @@ const Landing = () => {
               }
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {/* MODIFICATION: Buttons change based on user role */}
               {isOfficial ? (
                 <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
                   <Link to="/admin/verify">
@@ -126,18 +138,36 @@ const Landing = () => {
                 </Button>
               ) : (
                 <>
-                  <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
-                    <Link to="/report">
-                      <AlertTriangle className="w-5 h-5 mr-2" />
-                      Report Hazard
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
-                    <Link to="/dashboard">
-                      <BarChart3 className="w-5 h-5 mr-2" />
-                      View Dashboard
-                    </Link>
-                  </Button>
+                  {isSignedIn ? (
+                    <>
+                      <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
+                        <Link to="/report">
+                          <AlertTriangle className="w-5 h-5 mr-2" />
+                          Report Hazard
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+                        <Link to="/dashboard">
+                          <BarChart3 className="w-5 h-5 mr-2" />
+                          View Dashboard
+                        </Link>
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button asChild size="lg" className="bg-white text-primary hover:bg-white/90 font-semibold">
+                        <Link to="/login">
+                          <AlertTriangle className="w-5 h-5 mr-2" />
+                          Get Started
+                        </Link>
+                      </Button>
+                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+                        <Link to="/about">
+                          Learn More
+                        </Link>
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -237,12 +267,21 @@ const Landing = () => {
               Your contribution helps protect our coastal communities.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button asChild size="lg" variant="secondary">
-                <Link to="/register">
-                  <Users className="w-5 h-5 mr-2" />
-                  Register Now
-                </Link>
-              </Button>
+              {isSignedIn ? (
+                <Button asChild size="lg" variant="secondary">
+                  <Link to="/dashboard">
+                    <BarChart3 className="w-5 h-5 mr-2" />
+                    Go to Dashboard
+                  </Link>
+                </Button>
+              ) : (
+                <Button asChild size="lg" variant="secondary">
+                  <Link to="/register">
+                    <Users className="w-5 h-5 mr-2" />
+                    Register Now
+                  </Link>
+                </Button>
+              )}
               <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
                 <Link to="/about">
                   Learn More

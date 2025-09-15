@@ -4,10 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.handleCreateReportSocket = void 0;
-const report_model_1 = __importDefault(require("../models/report.model"));
 const mongoose_1 = require("mongoose");
-const cloudinary_1 = __importDefault(require("../config/cloudinary"));
 const axios_1 = __importDefault(require("axios"));
+const report_model_1 = __importDefault(require("../models/report.model"));
+const cloudinary_1 = __importDefault(require("../config/cloudinary"));
 const uploadToCloudinary = (buffer) => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary_1.default.uploader.upload_stream({ resource_type: 'auto', folder: 'ocean_reports' }, (error, result) => {
@@ -25,13 +25,13 @@ const getFullReport = async (id) => {
     const reportObj = report.toObject();
     if (reportObj.reporter) {
         const reporter = reportObj.reporter;
-        reportObj.reporterName = `${reporter.firstName} ${reporter.lastName}`;
+        reportObj.reporterName = `${reporter.firstName} ${reporter.lastName}`.trim();
     }
     return reportObj;
 };
 const handleCreateReportSocket = async (socket, data, io) => {
     try {
-        const { hazardType, severity, latitude, longitude, locationDescription, description, isEmergency, reporterName, reporterContact, media } = data;
+        const { hazardType, severity, latitude, longitude, locationDescription, description, isEmergency, media } = data;
         const reportData = {
             hazardType,
             severity,
@@ -39,14 +39,10 @@ const handleCreateReportSocket = async (socket, data, io) => {
             locationDescription,
             isEmergency,
             location: { type: 'Point', coordinates: [parseFloat(longitude), parseFloat(latitude)] },
-            reporterName,
-            reporterContact
         };
         if (description && description.trim()) {
             try {
-                const analysisResponse = await axios_1.default.post('http://localhost:5001/process-text', {
-                    description: description
-                });
+                const analysisResponse = await axios_1.default.post('http://localhost:5001/process-text', { description });
                 const { classification, sentiment } = analysisResponse.data;
                 reportData.classification = classification;
                 reportData.sentiment = sentiment;
@@ -69,23 +65,18 @@ const handleCreateReportSocket = async (socket, data, io) => {
         socket.emit('report-creation-success', populatedReport);
     }
     catch (error) {
-        console.error("Error creating report:", error);
+        console.error("Error creating report via socket:", error);
         socket.emit('report-creation-error', { message: error.message || 'Failed to create report.' });
     }
 };
 exports.handleCreateReportSocket = handleCreateReportSocket;
 const getVerifiedReports = async (req, res) => {
     try {
-        const reports = await report_model_1.default.find({ status: 'verified' }).populate('reporter', 'firstName lastName').sort({ createdAt: -1 });
-        const formattedReports = reports.map(report => {
-            const reportObj = report.toObject();
-            if (reportObj.reporter) {
-                const reporter = reportObj.reporter;
-                reportObj.reporterName = `${reporter.firstName} ${reporter.lastName}`;
-            }
-            return reportObj;
-        });
-        res.json(formattedReports);
+        const reports = await report_model_1.default.find({ status: 'verified' })
+            .populate('reporter', 'firstName lastName')
+            .sort({ createdAt: -1 });
+        const formattedReports = await Promise.all(reports.map(report => getFullReport(report._id)));
+        res.json(formattedReports.filter(Boolean));
     }
     catch (error) {
         res.status(500).json({ message: error.message });
@@ -94,24 +85,20 @@ const getVerifiedReports = async (req, res) => {
 exports.getVerifiedReports = getVerifiedReports;
 const getUnverifiedReports = async (req, res) => {
     try {
-        const reports = await report_model_1.default.find({ status: 'unverified' }).populate('reporter', 'firstName lastName').sort({ createdAt: -1 });
-        const formattedReports = reports.map(r => {
-            const reportObj = r.toObject();
-            if (reportObj.reporter) {
-                const reporter = reportObj.reporter;
-                reportObj.reporterName = `${reporter.firstName} ${reporter.lastName}`;
-            }
-            return reportObj;
-        });
-        res.json(formattedReports);
+        const reports = await report_model_1.default.find({ status: 'unverified' })
+            .populate('reporter', 'firstName lastName')
+            .sort({ createdAt: -1 });
+        const formattedReports = await Promise.all(reports.map(report => getFullReport(report._id)));
+        res.json(formattedReports.filter(Boolean));
     }
     catch (error) {
         res.status(500).json({ message: error.message });
     }
 };
 exports.getUnverifiedReports = getUnverifiedReports;
-const verifyReport = async (req, res, io) => {
+const verifyReport = async (req, res) => {
     try {
+        const io = req.io;
         const report = await report_model_1.default.findById(req.params.id);
         if (!report) {
             res.status(404).json({ message: 'Report not found' });
@@ -132,20 +119,26 @@ const verifyReport = async (req, res, io) => {
     }
 };
 exports.verifyReport = verifyReport;
-const rejectReport = async (req, res, io) => {
+const rejectReport = async (req, res) => {
     try {
+        const io = req.io;
         const report = await report_model_1.default.findById(req.params.id);
         if (!report) {
             res.status(404).json({ message: 'Report not found' });
             return;
         }
         if (report.mediaPublicId) {
-            await cloudinary_1.default.uploader.destroy(report.mediaPublicId);
+            try {
+                await cloudinary_1.default.uploader.destroy(report.mediaPublicId);
+            }
+            catch (cloudinaryError) {
+                console.error('Error deleting media from Cloudinary:', cloudinaryError);
+            }
         }
         report.status = 'rejected';
-        const updatedReport = await report.save();
-        io.to('officials').emit('report-rejected', { reportId: updatedReport._id });
-        res.json(updatedReport);
+        await report.save();
+        io.to('officials').emit('report-rejected', { reportId: report._id });
+        res.status(200).json({ message: 'Report rejected successfully.' });
     }
     catch (error) {
         res.status(500).json({ message: error.message });

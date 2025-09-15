@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useSocket } from "../contexts/SocketContext";
@@ -9,6 +10,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "@tanstack/react-query";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Upload,
   MapPin,
@@ -27,6 +30,14 @@ const Report = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { socket } = useSocket();
+  const { getToken } = useAuth();
+  const { toast } = useToast();
+  
+  // Get user data from react-query cache
+  const { data: user } = useQuery({
+    queryKey: ['me'],
+  });
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [hazardType, setHazardType] = useState("");
@@ -36,21 +47,26 @@ const Report = () => {
   const [locationDescription, setLocationDescription] = useState("");
   const [description, setDescription] = useState("");
   const [isEmergency, setIsEmergency] = useState(false);
-  const [reporterName, setReporterName] = useState("");
-  const [reporterContact, setReporterContact] = useState("");
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleReportSuccess = (newReport: any) => {
-      alert(t("report.submitSuccess"));
+      toast({
+        title: "Success",
+        description: t("report.submitSuccess"),
+      });
       setIsSubmitting(false);
       navigate("/dashboard");
     };
 
     const handleReportError = (error: { message: string }) => {
-      alert(`${t("common.error")}: ${error.message}`);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
       setIsSubmitting(false);
     };
 
@@ -61,13 +77,18 @@ const Report = () => {
       socket.off("report-creation-success", handleReportSuccess);
       socket.off("report-creation-error", handleReportError);
     };
-  }, [socket, navigate, t]);
+  }, [socket, navigate, t, toast]);
 
   const handleFetchCoordinates = () => {
     if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser.");
+      toast({
+        title: "Error",
+        description: "Geolocation is not supported by your browser.",
+        variant: "destructive",
+      });
       return;
     }
+    
     setIsFetchingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -75,60 +96,103 @@ const Report = () => {
         setLatitude(latitude.toString());
         setLongitude(longitude.toString());
         setIsFetchingLocation(false);
+        toast({
+          title: "Location Found",
+          description: "Your coordinates have been automatically filled.",
+        });
       },
       (error) => {
-        alert("Could not get your location. Please check your browser permissions.");
+        toast({
+          title: "Location Error",
+          description: "Could not get your location. Please check your browser permissions.",
+          variant: "destructive",
+        });
         setIsFetchingLocation(false);
       }
     );
   };
   
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!socket || !socket.connected) {
-      alert(t("common.error") + ": Not connected to server");
+      toast({
+        title: "Connection Error",
+        description: "Not connected to server. Please check your internet connection.",
+        variant: "destructive",
+      });
       return;
     }
+
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "User authentication required. Please refresh the page.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
-    const reportData = {
-      hazardType,
-      severity,
-      latitude,
-      longitude,
-      locationDescription,
-      description,
-      isEmergency,
-      reporterName,
-      reporterContact,
-      token,
-    };
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (readEvent) => {
-        const buffer = readEvent.target?.result;
-        if (buffer) {
-          socket.emit("create-report", {
-            ...reportData,
-            media: { buffer, name: file.name, type: file.type },
-          });
-        }
+
+    try {
+      const reportData = {
+        hazardType,
+        severity,
+        latitude,
+        longitude,
+        locationDescription,
+        description,
+        isEmergency,
       };
-      reader.readAsArrayBuffer(file);
-    } else {
-      socket.emit("create-report", reportData);
+
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (readEvent) => {
+          const buffer = readEvent.target?.result;
+          if (buffer) {
+            socket.emit("create-report", {
+              ...reportData,
+              media: { buffer, name: file.name, type: file.type },
+            });
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        socket.emit("create-report", reportData);
+      }
+    } catch (error) {
+      console.error("Error submitting report:", error);
+      toast({
+        title: "Submission Error",
+        description: "Failed to submit report. Please try again.",
+        variant: "destructive",
+      });
+      setIsSubmitting(false);
     }
   };
   
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      const maxSize = 10 * 1024 * 1024; // 10MB
+      
+      if (selectedFile.size > maxSize) {
+        toast({
+          title: "File Too Large",
+          description: "File size must be less than 10MB",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setFile(selectedFile);
     } else {
       setFile(null);
     }
   };
 
-  const hazardTypes = [
+  const hazardTypes = useMemo(() => [
     { value: 'tsunami', label: t('hazards.tsunami'), icon: Waves },
     { value: 'cyclone', label: t('hazards.cyclone'), icon: Wind },
     { value: 'pollution', label: t('hazards.pollution'), icon: AlertTriangle },
@@ -136,14 +200,14 @@ const Report = () => {
     { value: 'debris', label: t('hazards.debris'), icon: AlertTriangle },
     { value: 'lightning', label: t('hazards.lightning'), icon: Zap },
     { value: 'other', label: t('hazards.other'), icon: AlertTriangle },
-  ];
+  ], [t]);
 
-  const severityLevels = [
+  const severityLevels = useMemo(() => [
     { value: 'low', label: t('severity.low'), color: 'bg-green-100 text-green-800' },
     { value: 'medium', label: t('severity.medium'), color: 'bg-yellow-100 text-yellow-800' },
     { value: 'high', label: t('severity.high'), color: 'bg-orange-100 text-orange-800' },
     { value: 'critical', label: t('severity.critical'), color: 'bg-red-100 text-red-800' },
-  ];
+  ], [t]);
   
   return (
     <div className="min-h-screen bg-gradient-subtle py-8">
@@ -169,6 +233,11 @@ const Report = () => {
                 <span>{t('report.hazardReportDetails')}</span>
               </CardTitle>
               <CardDescription>{t('report.formDescription')}</CardDescription>
+             {user && (
+  <div className="text-sm text-muted-foreground">
+    Reporting as: {(user as any).firstName} {(user as any).lastName} ({(user as any).email})
+  </div>
+)}
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
@@ -179,7 +248,15 @@ const Report = () => {
                       const Icon = hazard.icon;
                       return (
                         <label key={hazard.value} className="relative flex items-center space-x-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-muted transition-smooth">
-                          <input type="radio" name="hazardType" value={hazard.value} className="sr-only" required checked={hazardType === hazard.value} onChange={() => setHazardType(hazard.value)} />
+                          <input 
+                            type="radio" 
+                            name="hazardType" 
+                            value={hazard.value} 
+                            className="sr-only" 
+                            required 
+                            checked={hazardType === hazard.value} 
+                            onChange={() => setHazardType(hazard.value)} 
+                          />
                           <Icon className="w-5 h-5 text-primary" />
                           <span className="text-sm font-medium">{hazard.label}</span>
                         </label>
@@ -210,20 +287,43 @@ const Report = () => {
                     <Label htmlFor="latitude">{t('report.latitude')}</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="latitude" type="number" step="any" placeholder="19.0760" className="pl-10" required value={latitude} onChange={(e) => setLatitude(e.target.value)} />
+                      <Input 
+                        id="latitude" 
+                        type="number" 
+                        step="any" 
+                        placeholder="19.0760" 
+                        className="pl-10" 
+                        required 
+                        value={latitude} 
+                        onChange={(e) => setLatitude(e.target.value)} 
+                      />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="longitude">{t('report.longitude')}</Label>
                     <div className="relative">
                       <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                      <Input id="longitude" type="number" step="any" placeholder="72.8777" className="pl-10" required value={longitude} onChange={(e) => setLongitude(e.target.value)} />
+                      <Input 
+                        id="longitude" 
+                        type="number" 
+                        step="any" 
+                        placeholder="72.8777" 
+                        className="pl-10" 
+                        required 
+                        value={longitude} 
+                        onChange={(e) => setLongitude(e.target.value)} 
+                      />
                     </div>
                   </div>
                 </div>
 
                 <div className="my-2">
-                  <Button type="button" variant="outline" onClick={handleFetchCoordinates} disabled={isFetchingLocation}>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleFetchCoordinates} 
+                    disabled={isFetchingLocation}
+                  >
                     <MapPin className="w-4 h-4 mr-2" />
                     {isFetchingLocation ? 'Fetching...' : 'Fetch My Location'}
                   </Button>
@@ -231,17 +331,50 @@ const Report = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="location">{t('report.locationDescription')}</Label>
-                  <Input id="location" placeholder="e.g., Near Mumbai Harbor, 2km from shore" required value={locationDescription} onChange={(e) => setLocationDescription(e.target.value)} />
+                  <Input 
+                    id="location" 
+                    placeholder="e.g., Near Mumbai Harbor, 2km from shore" 
+                    required 
+                    value={locationDescription} 
+                    onChange={(e) => setLocationDescription(e.target.value)} 
+                  />
                 </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="description">{t('report.hazardDescription')}</Label>
-                  <Textarea id="description" placeholder="Describe what you observed..." className="min-h-[120px]" required value={description} onChange={(e) => setDescription(e.target.value)} />
+                  <Textarea 
+                    id="description" 
+                    placeholder="Describe what you observed..." 
+                    className="min-h-[120px]" 
+                    required 
+                    value={description} 
+                    onChange={(e) => setDescription(e.target.value)} 
+                  />
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="isEmergency"
+                    checked={isEmergency}
+                    onChange={(e) => setIsEmergency(e.target.checked)}
+                    className="rounded"
+                  />
+                  <Label htmlFor="isEmergency" className="text-sm font-medium text-red-600">
+                    {t('report.markAsEmergency') || 'Mark as Emergency'}
+                  </Label>
                 </div>
 
                 <div className="space-y-3">
                   <Label className="text-base font-medium">{t('report.uploadMedia')}</Label>
                   <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
-                    <input type="file" accept="image/*,video/*" onChange={handleFileUpload} className="hidden" id="media-upload" />
+                    <input 
+                      type="file" 
+                      accept="image/*,video/*" 
+                      onChange={handleFileUpload} 
+                      className="hidden" 
+                      id="media-upload" 
+                    />
                     <label htmlFor="media-upload" className="cursor-pointer">
                       <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                       <p className="text-sm text-muted-foreground mb-2">{t('report.clickToUpload')}</p>
@@ -261,23 +394,15 @@ const Report = () => {
                     </div>
                   )}
                 </div>
-{/* Reporter Info */}
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div className="space-y-2">
-    <Label htmlFor="reporterName">{t('report.yourName')}</Label>
-    <Input id="reporterName" placeholder="John Doe"
-      value={reporterName} onChange={(e) => setReporterName(e.target.value)}
-    />
-  </div>
-  <div className="space-y-2">
-    <Label htmlFor="reporterContact">{t('report.contactNumber')}</Label>
-    <Input id="reporterContact" type="tel" placeholder="+91 98765 43210"
-      value={reporterContact} onChange={(e) => setReporterContact(e.target.value)}
-    />
-  </div>
-</div>
+
                 <div className="flex justify-end space-x-4">
-                  <Button type="button" variant="outline" onClick={() => navigate('/dashboard')}>{t('report.cancel')}</Button>
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => navigate('/dashboard')}
+                  >
+                    {t('report.cancel')}
+                  </Button>
                   <Button type="submit" disabled={isSubmitting} className="px-8">
                     {isSubmitting ? t('report.submitting') : (
                       <>

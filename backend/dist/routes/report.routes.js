@@ -1,57 +1,37 @@
 "use strict";
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerReportSocketHandlers = exports.reportRoutes = void 0;
+exports.registerReportSocketHandlers = exports.reportRoutes = exports.createReportRouter = void 0;
 const express_1 = require("express");
-const reportController = __importStar(require("../controllers/report.controller"));
+const report_controller_1 = require("../controllers/report.controller");
 const auth_middleware_1 = require("../middleware/auth.middleware");
-const reportRoutes = (io) => {
+const createReportRouter = (io) => {
     const router = (0, express_1.Router)();
-    router.get('/verified', (req, res) => reportController.getVerifiedReports(req, res));
-    router.get('/unverified', auth_middleware_1.authenticate, (req, res) => reportController.getUnverifiedReports(req, res));
-    router.put('/verify/:id', auth_middleware_1.authenticate, (req, res) => reportController.verifyReport(req, res, io));
-    router.put('/reject/:id', auth_middleware_1.authenticate, (req, res) => reportController.rejectReport(req, res, io));
+    const attachIO = (req, res, next) => {
+        req.io = io;
+        next();
+    };
+    router.use(attachIO);
+    router.get('/verified', auth_middleware_1.protect, report_controller_1.getVerifiedReports);
+    router.get('/unverified', auth_middleware_1.protect, auth_middleware_1.attachUser, (0, auth_middleware_1.authorize)(['official', 'admin']), report_controller_1.getUnverifiedReports);
+    router.put('/:id/verify', auth_middleware_1.protect, auth_middleware_1.attachUser, (0, auth_middleware_1.authorize)(['official', 'admin']), report_controller_1.verifyReport);
+    router.delete('/:id/reject', auth_middleware_1.protect, auth_middleware_1.attachUser, (0, auth_middleware_1.authorize)(['official', 'admin']), report_controller_1.rejectReport);
     return router;
 };
-exports.reportRoutes = reportRoutes;
-const registerReportSocketHandlers = (io, socket) => {
-    socket.on('create-report', async (data) => {
-        const user = await (0, auth_middleware_1.authenticateSocket)(data.token, socket);
-        if (user) {
-            await reportController.handleCreateReportSocket(socket, data, io);
-        }
+exports.createReportRouter = createReportRouter;
+exports.reportRoutes = exports.createReportRouter;
+const registerReportSocketHandlers = (io) => {
+    io.on('connection', (socket) => {
+        console.log(`User connected: ${socket.id}`);
+        socket.on('create-report', async (data) => {
+            await (0, report_controller_1.handleCreateReportSocket)(socket, data, io);
+        });
+        socket.on('join-room', (room) => {
+            socket.join(room);
+            console.log(`User ${socket.id} joined room: ${room}`);
+        });
+        socket.on('disconnect', () => {
+            console.log(`User disconnected: ${socket.id}`);
+        });
     });
 };
 exports.registerReportSocketHandlers = registerReportSocketHandlers;

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import spacy
 import json
-
+import re
 # --- Utility Script Imports ---
 from utils.classifier import classify_text
 from utils.sentiment import analyze_sentiment, get_urgency_level
@@ -44,7 +44,11 @@ HEADERS = {
     'Authorization': f'Bearer {TWITTER_BEARER_TOKEN}'
 } if TWITTER_BEARER_TOKEN else {}
 
-QUERY = "(flood OR cyclone OR storm OR coastal OR erosion OR tsunami OR sea-level) lang:en"
+# --- YouTube API Configuration ---
+YOUTUBE_API_KEY = "AIzaSyC8aIJTmSKJpQYyaKqxYFNHP96beJy1-y8"  # Replace with your actual API key
+YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+YOUTUBE_QUERY = "flood OR cyclone OR storm OR coastal OR erosion OR tsunami OR sea-level"
+MAX_RESULTS = 15
 
 # --- ML Model Setup ---
 MODEL_PATH = 'model/'
@@ -57,16 +61,59 @@ except Exception as e:
     tokenizer = None
     model = None
 
-RELEVANCE_THRESHOLD = 0.5
+RELEVANCE_THRESHOLD = 0.3  # Lowered from 0.5
 
-# --- Load Indian Locations Dataset ---
-with open('indian_locations.json', 'r', encoding='utf-8') as f:
-    locations_data = json.load(f)
+# --- Indian Locations Dataset with Aliases ---
+try:
+    with open("indian_locations.json", "r", encoding="utf-8") as f:
+        locations_data = json.load(f)
+    
+    # Create normalized location sets for better matching
+    all_locations = set()
+    location_aliases = {
+        'mumbai': ['bombay'],
+        'chennai': ['madras'], 
+        'kolkata': ['calcutta'],
+        'bangalore': ['bengaluru'],
+        'mysore': ['mysuru'],
+        'varanasi': ['benares'],
+        'allahabad': ['prayagraj'],
+        'gurgaon': ['gurugram'],
+        'visakhapatnam': ['vizag', 'vishakhapatnam'],
+        'tiruchirappalli': ['trichy'],
+        'kochi': ['cochin'],
+        'puducherry': ['pondicherry'],
+        'odisha': ['orissa'],
+        'tamil nadu': ['tn'],
+        'andhra pradesh': ['ap'],
+        'west bengal': ['wb'],
+        'uttar pradesh': ['up'],
+        'madhya pradesh': ['mp'],
+        'himachal pradesh': ['hp']
+    }
+    
+    for loc_list in [locations_data['states'], locations_data['union_territories'], locations_data['coastal_cities']]:
+        for loc in loc_list:
+            normalized = loc.lower().strip()
+            all_locations.add(normalized)
+            # Add aliases if they exist
+            if normalized in location_aliases:
+                for alias in location_aliases[normalized]:
+                    all_locations.add(alias)
+    
+    print(f"Loaded {len(all_locations)} Indian locations (including aliases)")
+except Exception as e:
+    print(f"Error loading Indian locations: {e}")
+    all_locations = set()
+    locations_data = {'states': [], 'union_territories': [], 'coastal_cities': []}
 
-all_locations = set(locations_data['states'] + locations_data['union_territories'] + locations_data['coastal_cities'])
-
-# --- Load NER Model ---
-nlp = spacy.load('en_core_web_sm')
+# --- NER Setup ---
+try:
+    nlp = spacy.load("en_core_web_sm")
+    print("Spacy model loaded successfully")
+except Exception as e:
+    print(f"Error loading Spacy model: {e}")
+    nlp = None
 
 # --- Helper Functions ---
 def is_cache_valid():
@@ -75,155 +122,213 @@ def is_cache_valid():
     elapsed = (datetime.utcnow() - tweet_cache['last_fetch']).total_seconds()
     return elapsed < tweet_cache['cache_duration_seconds']
 
-def can_request_twitter():
-    if not rate_limit_tracker['last_request_time']:
-        return True, 0
-    elapsed = (datetime.utcnow() - rate_limit_tracker['last_request_time']).total_seconds()
-    if elapsed < rate_limit_tracker['cooldown_seconds']:
-        wait = rate_limit_tracker['cooldown_seconds'] - elapsed
-        return False, int(wait)
-    return True, 0
-
-def extract_locations(text):
-    """Return all location entities in text."""
-    doc = nlp(text)
-    locations = [ent.text for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
-    return locations
-
-def get_indian_locations(text):
-    """Return list of Indian locations mentioned in text."""
-    locations = extract_locations(text)
-    indian_locs = [loc.strip() for loc in locations if loc.strip() in all_locations]
-    return indian_locs
-
 def is_relevant(text):
-    """Check if text is relevant using IndicBERT model."""
-    if not tokenizer or not model:
-        return False
+    """Check relevance using ML model"""
     try:
-        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+        if not text or len(text.strip()) < 10 or not tokenizer or not model:
+            return False
+        
+        inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
         with torch.no_grad():
             outputs = model(**inputs)
         scores = torch.softmax(outputs.logits, dim=1)
         relevance_score = scores[0][1].item()  # class 1 = relevant
         return relevance_score >= RELEVANCE_THRESHOLD
     except Exception as e:
-        print(f"Error in relevance check: {e}")
+        print(f"Relevance check error: {e}")
         return False
 
-# --- Routes ---
-@app.route('/recent-tweets', methods=['GET'])
-def recent_tweets():
-    if not TWITTER_BEARER_TOKEN:
-        return jsonify({'status': 'error', 'message': 'Twitter credentials missing'}), 500
-
-    if is_cache_valid():
-        return jsonify({'status': 'success', 'tweets': tweet_cache['data'], 'source': 'cache'})
-
-    can_req, wait = can_request_twitter()
-    if not can_req:
-        if tweet_cache['data']:
-            return jsonify({'status': 'success', 'tweets': tweet_cache['data'],
-                            'message': f'Rate limit hit. Retry after {wait}s', 'source': 'stale-cache'})
-        else:
-            return jsonify({'status': 'error', 'message': f'Rate limit hit. Retry after {wait}s'}), 429
-
+def extract_locations(text):
+    """Extract locations using NER and regex patterns"""
     try:
-        one_month_ago =datetime.utcnow() - timedelta(days=30)  # past 1 month
-        start_time = one_month_ago.isoformat("T") + "Z"
-        params = {
-            'query': QUERY,
-            'start_time': start_time,
-            'max_results': 15,
-            'tweet.fields': 'created_at,text'
-        }
-        rate_limit_tracker['last_request_time'] = datetime.utcnow()
-        response = requests.get(TWITTER_SEARCH_URL, headers=HEADERS, params=params, timeout=10)
-        if response.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'Twitter API error', 'detail': response.text}), response.status_code
-
-        data = response.json()
-        filtered = []
-        for tweet in data.get('data', []):
-            text = tweet.get('text', '')
-            indian_locations = get_indian_locations(text)
-            if is_relevant(text) and indian_locations:
-                filtered.append({
-                    'description': text,
-                    'location': indian_locations,
-                    'time': tweet.get('created_at', '')
-                })
-
-        tweet_cache['data'] = filtered
-        tweet_cache['last_fetch'] = datetime.utcnow()
-        return jsonify({'status': 'success', 'tweets': filtered, 'source': 'live'})
-
-    except requests.exceptions.Timeout:
-        return jsonify({'status': 'error', 'message': 'Twitter API timeout'}), 408
+        if not text:
+            return []
+        
+        locations = []
+        
+        # Use spaCy NER if available
+        if nlp:
+            doc = nlp(text)
+            locations = [ent.text.strip() for ent in doc.ents if ent.label_ in ("GPE", "LOC")]
+        
+        # Also try regex pattern matching for common Indian location patterns
+        indian_patterns = r'\b(Kerala|Tamil Nadu|Karnataka|Goa|Mumbai|Delhi|Chennai|Kolkata|Bangalore|Hyderabad|Ahmedabad|Pune|Surat|Jaipur|Lucknow|Kanpur|Nagpur|Indore|Thane|Bhopal|Visakhapatnam|Pimpri|Patna|Vadodara|Ghaziabad|Ludhiana|Agra|Nashik|Faridabad|Meerut|Rajkot|Kalyan|Vasai|Varanasi|Srinagar|Aurangabad|Dhanbad|Amritsar|Navi Mumbai|Allahabad|Ranchi|Howrah|Coimbatore|Jabalpur|Gwalior|Vijayawada|Jodhpur|Madurai|Raipur|Kota|Guwahati|Chandigarh|Solapur|Hubballi|Tiruchirappalli|Bareilly|Mysore|Tiruppur|Gurgaon|Aligarh|Jalandhar|Bhubaneswar|Salem|Warangal|Guntur|Bhiwandi|Saharanpur|Gorakhpur|Bikaner|Amravati|Noida|Jamshedpur|Bhilai|Cuttack|Firozabad|Kochi|Nellore|Bhavnagar|Dehradun|Durgapur|Asansol|Rourkela|Nanded|Kolhapur|Ajmer|Akola|Gulbarga|Jamnagar|Ujjain|Loni|Siliguri|Jhansi|Ulhasnagar|Jammu|Sangli|Mangalore|Erode|Belgaum|Ambattur|Tirunelveli|Malegaon|Gaya|Jalgaon|Udaipur|Maheshtala)\b'
+        regex_matches = re.findall(indian_patterns, text, re.IGNORECASE)
+        
+        # Combine both approaches
+        all_found = locations + regex_matches
+        return list(set(all_found))  # Remove duplicates
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        print(f"Location extraction error: {e}")
+        return []
 
-@app.route('/recent-videos', methods=['GET'])
+def get_indian_locations(text):
+    """Filter locations to only include Indian ones"""
+    try:
+        locations = extract_locations(text)
+        indian_locs = []
+        for loc in locations:
+            loc_normalized = loc.lower().strip()
+            if loc_normalized in all_locations:
+                indian_locs.append(loc.strip())
+        return indian_locs
+    except Exception as e:
+        print(f"Indian location filtering error: {e}")
+        return []
+
+def check_text_relevance(text):
+    """Check if text contains disaster/climate related keywords"""
+    climate_keywords = [
+        'flood', 'flooding', 'cyclone', 'storm', 'tsunami', 'erosion', 
+        'sea level', 'coastal', 'hurricane', 'typhoon', 'disaster', 
+        'weather', 'climate', 'rain', 'monsoon', 'drought', 'landslide'
+    ]
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in climate_keywords)
+
+# --- YouTube Route (Updated) ---
+@app.route("/recent-videos", methods=["GET"])
 def recent_videos():
-    one_month_ago = datetime.utcnow() - timedelta(days=30)
-    published_after = one_month_ago.isoformat("T") + "Z"
+    """Fetch recent disaster-related videos from YouTube"""
+    debug = request.args.get('debug', 'false').lower() == 'true'
+    strict_mode = request.args.get('strict', 'true').lower() == 'true'
 
-    YOUTUBE_API_KEY = 'AIzaSyC8aIJTmSKJpQYyaKqxYFNHP96beJy1-y8'  # Replace with actual key or use environment variables
-    YOUTUBE_SEARCH_URL = 'https://www.googleapis.com/youtube/v3/search'
-
-    QUERY = "flood OR cyclone OR storm OR coastal OR erosion OR tsunami OR sea-level"
-    MAX_RESULTS = 15
-
-    params = {
-        'part': 'snippet',
-        'q': QUERY,
-        'type': 'video',
-        'publishedAfter': published_after,
-        'maxResults': MAX_RESULTS,
-        'regionCode': 'IN',
-        'key': YOUTUBE_API_KEY
-    }
+    # Check if YouTube API key is configured
+    if not YOUTUBE_API_KEY or YOUTUBE_API_KEY == "YOUR_YOUTUBE_API_KEY":
+        return jsonify({
+            "status": "error", 
+            "message": "YouTube API key not configured"
+        }), 500
 
     try:
+        # Set date range (last 30 days)
+        one_month_ago = datetime.utcnow() - timedelta(days=30)
+        published_after = one_month_ago.isoformat("T") + "Z"
+
+        # YouTube API parameters
+        params = {
+            "part": "snippet",
+            "q": YOUTUBE_QUERY,
+            "type": "video",
+            "publishedAfter": published_after,
+            "maxResults": MAX_RESULTS,
+            "regionCode": "IN",
+            "key": YOUTUBE_API_KEY
+        }
+
+        # Make API request
         response = requests.get(YOUTUBE_SEARCH_URL, params=params, timeout=10)
-        data = response.json()
-        print(data)
+        
         if response.status_code != 200:
-            return jsonify({'status': 'error', 'message': 'YouTube API error', 'detail': response.text}), response.status_code
+            return jsonify({
+                "status": "error", 
+                "message": "YouTube API error", 
+                "detail": response.text
+            }), response.status_code
 
         data = response.json()
-        filtered = []
-        for item in data.get('items', []):
-            snippet = item.get('snippet', {})
-            description = snippet.get('description', "")
-            indian_locations = get_indian_locations(description)
+        filtered_videos = []
+        debug_info = []
 
-            if is_relevant(description) and indian_locations:
-                filtered.append({
-                    'videoId': item['id']['videoId'],
-                    'title': snippet.get('title', ""),
-                    'description': description,
-                    'publishedAt': snippet.get('publishedAt', ""),
-                    'thumbnail': snippet.get('thumbnails', {}).get('default', {}).get('url', ""),
-                    'location': indian_locations
+        # Process each video
+        for item in data.get("items", []):
+            snippet = item.get("snippet", {})
+            title = snippet.get("title", "")
+            description = snippet.get("description", "")
+            
+            # Combine title and description for better analysis
+            full_text = f"{title}. {description}"
+            
+            # Extract locations from full text
+            indian_locations = get_indian_locations(full_text)
+            
+            # Check relevance using multiple methods
+            ml_relevant = is_relevant(description) if description else False
+            keyword_relevant = check_text_relevance(full_text)
+            
+            # Decision logic
+            include_video = False
+            reason = ""
+            
+            if strict_mode:
+                # Strict mode: both ML relevant AND has locations
+                if ml_relevant and indian_locations:
+                    include_video = True
+                    reason = "ML relevant + locations found"
+            else:
+                # Relaxed mode: ML relevant OR (keyword relevant AND has locations)
+                if ml_relevant or (keyword_relevant and indian_locations):
+                    include_video = True
+                    reason = f"ML: {ml_relevant}, Keywords: {keyword_relevant}, Locations: {bool(indian_locations)}"
+            
+            # Store debug info if requested
+            if debug:
+                debug_info.append({
+                    "title": title,
+                    "description": description[:200] + "..." if len(description) > 200 else description,
+                    "ml_relevant": ml_relevant,
+                    "keyword_relevant": keyword_relevant,
+                    "locations_found": indian_locations,
+                    "included": include_video,
+                    "reason": reason
                 })
+            
+            # Add to filtered results if it passes criteria
+            if include_video:
+                video_data = {
+                    "title": title,
+                    "description": description,
+                    "location": indian_locations,
+                    "videoId": item.get("id", {}).get("videoId", ""),
+                    "publishedAt": snippet.get("publishedAt", "")
+                }
+                
+                # Add thumbnail if available
+                thumbnails = snippet.get("thumbnails", {})
+                if "medium" in thumbnails:
+                    video_data["thumbnail"] = thumbnails["medium"]["url"]
+                elif "default" in thumbnails:
+                    video_data["thumbnail"] = thumbnails["default"]["url"]
+                
+                filtered_videos.append(video_data)
 
-        return jsonify({'status': 'success', 'videos': filtered})
+
+        # Prepare response
+        result = {
+            "status": "success",
+            "videos": filtered_videos,
+            "total_found": len(filtered_videos)
+        }
+        
+        if debug:
+            result["debug_info"] = debug_info
+            result["total_processed"] = len(debug_info)
+            result["api_response_items"] = len(data.get("items", []))
+        
+        return jsonify(result)
+
     except requests.exceptions.Timeout:
-        return jsonify({'status': 'error', 'message': 'YouTube API timeout'}), 408
+        return jsonify({
+            "status": "error", 
+            "message": "YouTube API timeout"
+        }), 408
     except Exception as e:
-        print(e)
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({
+            "status": "error", 
+            "message": f"Error fetching videos: {str(e)}"
+        }), 500
 
-    
-
+# --- Other Routes ---
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({
         'status': 'healthy',
         'chatbot_loaded': chatbot_dataset is not None,
         'model_loaded': tokenizer is not None and model is not None,
-        'twitter_configured': bool(TWITTER_BEARER_TOKEN)
+        'twitter_configured': bool(TWITTER_BEARER_TOKEN),
+        'youtube_configured': bool(YOUTUBE_API_KEY and YOUTUBE_API_KEY != "YOUR_YOUTUBE_API_KEY"),
+        'spacy_loaded': nlp is not None,
+        'locations_loaded': len(all_locations) > 0
     })
 
 @app.route('/cache-status', methods=['GET'])
@@ -243,37 +348,51 @@ def clear_cache():
 
 @app.route('/process-text', methods=['POST'])
 def process_text():
-    data = request.json
-    if not data or 'description' not in data:
-        return jsonify({'error': 'Description required'}), 400
-    text = data['description']
-    classification, confidence = classify_text(text)
-    sentiment = analyze_sentiment(text)
-    urgency = get_urgency_level(sentiment, classification)
-    return jsonify({
-        'classification': {'label': classification, 'confidence': confidence},
-        'sentiment': {'score': sentiment, 'urgency_level': urgency}
-    })
+    try:
+        data = request.json
+        if not data or 'description' not in data:
+            return jsonify({'error': 'Description required'}), 400
+        
+        text = data['description']
+        classification, confidence = classify_text(text)
+        sentiment = analyze_sentiment(text)
+        urgency = get_urgency_level(sentiment, classification)
+        
+        return jsonify({
+            'classification': {'label': classification, 'confidence': confidence},
+            'sentiment': {'score': sentiment, 'urgency_level': urgency}
+        })
+    except Exception as e:
+        return jsonify({'error': f'Processing failed: {str(e)}'}), 500
 
 @app.route('/find-hotspots', methods=['POST'])
 def find_hotspots_route():
-    data = request.json
-    if not data or 'reports' not in data or len(data['reports']) < 3:
-        return jsonify({'hotspots': [], 'message': 'Insufficient data'}), 400
-    reports = data['reports']
-    hotspots = find_hotspots(reports)
-    return jsonify({'hotspots': hotspots})
+    try:
+        data = request.json
+        if not data or 'reports' not in data or len(data['reports']) < 3:
+            return jsonify({'hotspots': [], 'message': 'Insufficient data (minimum 3 reports required)'}), 400
+        
+        reports = data['reports']
+        hotspots = find_hotspots(reports)
+        return jsonify({'hotspots': hotspots})
+    except Exception as e:
+        return jsonify({'error': f'Hotspot analysis failed: {str(e)}'}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat_route():
     if not chatbot_dataset:
         return jsonify({'error': 'Chatbot not available'}), 503
-    data = request.json
-    if not data or 'message' not in data:
-        return jsonify({'error': 'Message required'}), 400
-    user_input = data['message']
-    response = get_answer(chatbot_dataset, user_input)
-    return jsonify({'response': response})
+    
+    try:
+        data = request.json
+        if not data or 'message' not in data:
+            return jsonify({'error': 'Message required'}), 400
+        
+        user_input = data['message']
+        response = get_answer(chatbot_dataset, user_input)
+        return jsonify({'response': response})
+    except Exception as e:
+        return jsonify({'error': f'Chat processing failed: {str(e)}'}), 500
 
 # --- Run the Server ---
 if __name__ == '__main__':
