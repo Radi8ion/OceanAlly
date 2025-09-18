@@ -12,7 +12,7 @@ import RoleProtectedRoute from "./pages/RoleProtectedRoute";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Report from "./pages/Report";
-
+import ProfilePage from "./pages/Profile"; // Import the ProfilePage component
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import VerificationDashboard from "./pages/VerificationDashboard";
@@ -78,6 +78,21 @@ const App = () => {
                 <SignedIn>
                   <AuthSync>
                     <Layout><Report /></Layout>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } 
+          />
+          <Route 
+            path="/profile" 
+            element={
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <Layout><ProfilePage /></Layout>
                   </AuthSync>
                 </SignedIn>
                 <SignedOut>

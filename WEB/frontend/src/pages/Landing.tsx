@@ -146,7 +146,7 @@ const Landing = () => {
                           Report Hazard
                         </Link>
                       </Button>
-                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white text-primary">
                         <Link to="/dashboard">
                           <BarChart3 className="w-5 h-5 mr-2" />
                           View Dashboard
@@ -282,7 +282,7 @@ const Landing = () => {
                   </Link>
                 </Button>
               )}
-              <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+              <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white text-primary">
                 <Link to="/about">
                   Learn More
                 </Link>

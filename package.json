@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@clerk/clerk-js": "^4.73.14",
     "leaflet": "^1.9.4",
     "leaflet.heat": "^0.2.0",
     "react": "^17.0.2",

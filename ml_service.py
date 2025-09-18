@@ -51,7 +51,7 @@ YOUTUBE_QUERY = "flood OR cyclone OR storm OR coastal OR erosion OR tsunami OR s
 MAX_RESULTS = 15
 
 # --- ML Model Setup ---
-MODEL_PATH = 'model/'
+MODEL_PATH = 'models/indicbert/'
 try:
     tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
     model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)

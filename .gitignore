@@ -8,3 +8,7 @@ venv/
 .DS_Store
 model/*.bin
 model/model.safetensors
+models/indicbert/model.safetensors
+models/blip2/model.safetensors
+node_modules
+*.safetensors

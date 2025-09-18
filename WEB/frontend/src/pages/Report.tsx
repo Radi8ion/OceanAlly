@@ -24,6 +24,9 @@ import {
   Wind,
   Zap,
   Thermometer,
+  Phone,
+  User,
+  X,
 } from "lucide-react";
 
 const Report = () => {
@@ -40,6 +43,7 @@ const Report = () => {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [hazardType, setHazardType] = useState("");
   const [severity, setSeverity] = useState("");
   const [latitude, setLatitude] = useState("");
@@ -48,6 +52,27 @@ const Report = () => {
   const [description, setDescription] = useState("");
   const [isEmergency, setIsEmergency] = useState(false);
   const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+  const [reporterName, setReporterName] = useState("");
+  const [reporterPhone, setReporterPhone] = useState("");
+
+  // Initialize reporter info from user data
+  useEffect(() => {
+    if (user) {
+      const userData = user as any;
+      setReporterName(`${userData.firstName || ''} ${userData.lastName || ''}`.trim());
+      // Note: Phone number would need to be available in user data
+      // You might need to add this field to your user profile
+    }
+  }, [user]);
+
+  // Cleanup preview URL when component unmounts or file changes
+  useEffect(() => {
+    return () => {
+      if (filePreview) {
+        URL.revokeObjectURL(filePreview);
+      }
+    };
+  }, [filePreview]);
 
   useEffect(() => {
     if (!socket) return;
@@ -144,6 +169,9 @@ const Report = () => {
         locationDescription,
         description,
         isEmergency,
+        reporterName: reporterName || `${(user as any).firstName} ${(user as any).lastName}`.trim(),
+        reporterPhone,
+        reporterEmail: (user as any).email,
       };
 
       if (file) {
@@ -187,8 +215,26 @@ const Report = () => {
       }
       
       setFile(selectedFile);
+      
+      // Create preview URL for the file
+      const previewUrl = URL.createObjectURL(selectedFile);
+      setFilePreview(previewUrl);
     } else {
       setFile(null);
+      setFilePreview(null);
+    }
+  };
+
+  const removeFile = () => {
+    setFile(null);
+    if (filePreview) {
+      URL.revokeObjectURL(filePreview);
+      setFilePreview(null);
+    }
+    // Reset file input
+    const fileInput = document.getElementById('media-upload') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.value = '';
     }
   };
 
@@ -241,24 +287,72 @@ const Report = () => {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Reporter Information Section */}
+                <div className="space-y-4 p-4 bg-muted/30 rounded-lg">
+                  <h3 className="text-lg font-semibold flex items-center space-x-2">
+                    <User className="w-5 h-5 text-primary" />
+                    <span>Reporter Information</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reporterName">Full Name *</Label>
+                      <Input 
+                        id="reporterName" 
+                        placeholder="Enter your full name" 
+                        required 
+                        value={reporterName} 
+                        onChange={(e) => setReporterName(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reporterPhone">Phone Number *</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                          id="reporterPhone" 
+                          type="tel" 
+                          placeholder="+91 98765 43210" 
+                          className="pl-10" 
+                          required 
+                          value={reporterPhone} 
+                          onChange={(e) => setReporterPhone(e.target.value)} 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="space-y-3">
                   <Label className="text-base font-medium">{t('report.hazardType')}</Label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {hazardTypes.map((hazard) => {
                       const Icon = hazard.icon;
+                      const isSelected = hazardType === hazard.value;
                       return (
-                        <label key={hazard.value} className="relative flex items-center space-x-3 p-3 border border-border rounded-lg cursor-pointer hover:bg-muted transition-smooth">
+                        <label 
+                          key={hazard.value} 
+                          className={`relative flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-all duration-200 hover:bg-muted ${
+                            isSelected 
+                              ? 'border-primary bg-primary/5 ring-2 ring-primary/20' 
+                              : 'border-border hover:border-primary/50'
+                          }`}
+                        >
                           <input 
                             type="radio" 
                             name="hazardType" 
                             value={hazard.value} 
                             className="sr-only" 
                             required 
-                            checked={hazardType === hazard.value} 
+                            checked={isSelected} 
                             onChange={() => setHazardType(hazard.value)} 
                           />
-                          <Icon className="w-5 h-5 text-primary" />
-                          <span className="text-sm font-medium">{hazard.label}</span>
+                          <Icon className={`w-5 h-5 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`} />
+                          <span className={`text-sm font-medium ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                            {hazard.label}
+                          </span>
+                          {isSelected && (
+                            <CheckCircle className="w-4 h-4 text-primary ml-auto" />
+                          )}
                         </label>
                       );
                     })}
@@ -381,16 +475,66 @@ const Report = () => {
                       <p className="text-xs text-muted-foreground">{t('report.maxFileSize')}</p>
                     </label>
                   </div>
+                  
                   {file && (
-                    <div className="mt-2">
-                      <div className="flex items-center space-x-2 p-2 bg-muted rounded-lg text-sm">
-                        {file.type.startsWith('image/') ? (
-                          <Camera className="w-4 h-4 text-primary flex-shrink-0" />
-                        ) : (
-                          <Video className="w-4 h-4 text-primary flex-shrink-0" />
-                        )}
-                        <span className="truncate" title={file.name}>{file.name}</span>
+                    <div className="mt-4 space-y-3">
+                      {/* File info bar */}
+                      <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          {file.type.startsWith('image/') ? (
+                            <Camera className="w-4 h-4 text-primary flex-shrink-0" />
+                          ) : (
+                            <Video className="w-4 h-4 text-primary flex-shrink-0" />
+                          )}
+                          <span className="text-sm font-medium truncate" title={file.name}>
+                            {file.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            ({(file.size / 1024 / 1024).toFixed(1)} MB)
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={removeFile}
+                          className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
                       </div>
+
+                      {/* Preview */}
+                      {filePreview && (
+                        <div className="relative rounded-lg overflow-hidden bg-muted">
+                          {file.type.startsWith('image/') ? (
+                            <img
+                              src={filePreview}
+                              alt="Preview"
+                              className="w-full max-h-64 object-cover"
+                            />
+                          ) : (
+                            <video
+                              src={filePreview}
+                              controls
+                              className="w-full max-h-64"
+                            >
+                              Your browser does not support the video tag.
+                            </video>
+                          )}
+                          
+                          {/* Remove button overlay */}
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={removeFile}
+                            className="absolute top-2 right-2 h-8 w-8 p-0"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

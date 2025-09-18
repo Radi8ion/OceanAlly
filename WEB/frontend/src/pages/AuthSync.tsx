@@ -27,7 +27,7 @@ const fetchAndSyncUser = async (getToken: () => Promise<string | null>): Promise
     throw new Error("User is not authenticated. Cannot fetch token.");
   }
 
-  const response = await apiClient.get('/me', {
+  const response = await apiClient.get('/auth/me', {
     headers: {
       Authorization: `Bearer ${token}`,
     },

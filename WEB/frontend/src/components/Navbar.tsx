@@ -14,6 +14,9 @@ import {
   Globe,
   Shield,
   UserCheck,
+  User,
+  Settings,
+  LogOut,
 } from 'lucide-react';
 import {
   Select,
@@ -22,6 +25,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useLanguage } from '../contexts/LanguageContext';
 import apiClient from '@/lib/api'; // Ensure this path is correct for your project
 
@@ -32,6 +44,9 @@ interface User {
   firstName: string;
   lastName: string;
   email: string;
+  phone?: string;
+  organization?: string;
+  location?: string;
   role: 'citizen' | 'official' | 'admin';
 }
 
@@ -41,7 +56,7 @@ const fetchCurrentUser = async (getToken: () => Promise<string | null>): Promise
     if (!token) {
         throw new Error("Authentication token not found.");
     }
-    const response = await apiClient.get('/me', {
+    const response = await apiClient.get('/auth/me', {
         headers: { Authorization: `Bearer ${token}` },
     });
     if (!response.data.success || !response.data.user) {
@@ -172,16 +187,61 @@ const Navbar = () => {
 
             {isSignedIn && user ? (
               <div className="flex items-center space-x-3">
-                <span className="text-sm text-muted-foreground">
-                  {t('navbar.welcome')}, {user.firstName || clerkUser?.firstName}
-                </span>
-                <Button variant="ghost" size="sm" onClick={handleLogout}>
-                  {t('navbar.logout')}
-                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage 
+                          src={clerkUser?.imageUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${user.firstName} ${user.lastName}`} 
+                          alt={`${user.firstName} ${user.lastName}`} 
+                        />
+                        <AvatarFallback>
+                          {(user.firstName?.[0] || '').toUpperCase()}{(user.lastName?.[0] || '').toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {user.firstName} {user.lastName}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user.email}
+                        </p>
+                        {user.organization && (
+                          <p className="text-xs leading-none text-muted-foreground">
+                            {user.organization}
+                          </p>
+                        )}
+                        {isOfficial && (
+                          <div className="flex items-center space-x-1 mt-1">
+                            <Shield className="w-3 h-3 text-primary" />
+                            <span className="text-xs text-primary capitalize">
+                              {t(`navbar.${user.role}`)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile" className="cursor-pointer">
+                        <User className="mr-2 h-4 w-4" />
+                        <span>{t('navbar.profile') || 'Profile'}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>{t('navbar.logout')}</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             ) : (
               <Button asChild size="sm">
-                {/* FIXED: Changed route from /sign-in to /login */}
                 <Link to="/login">{t('navbar.login')}</Link>
               </Button>
             )}
@@ -256,7 +316,6 @@ const Navbar = () => {
                   </Button>
                 ) : (
                   <Button className="w-full" asChild>
-                    {/* FIXED: Changed route from /sign-in to /login */}
                     <Link to="/login" onClick={() => setIsOpen(false)}>
                       {t('navbar.login')}
                     </Link>

@@ -6,7 +6,7 @@ import axios from 'axios';
 const apiClient = axios.create({
   // Sets the base URL for all API requests.
   // Make sure this matches your backend server's address and port.
-  baseURL: 'http://localhost:5000/api/v1/auth', 
+  baseURL: 'http://localhost:5000/api/v1', 
   headers: {
     'Content-Type': 'application/json',
   },
