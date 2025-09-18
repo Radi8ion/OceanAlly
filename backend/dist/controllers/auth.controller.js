@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUserStats = exports.updateMe = exports.getMe = void 0;
+exports.getOfficialStats = exports.getUserStats = exports.updateMe = exports.getMe = void 0;
 const user_model_1 = __importDefault(require("../models/user.model"));
 const report_model_1 = __importDefault(require("../models/report.model"));
 const clerk_sdk_node_1 = require("@clerk/clerk-sdk-node");
@@ -178,3 +178,152 @@ const getUserStats = async (req, res) => {
     }
 };
 exports.getUserStats = getUserStats;
+const getOfficialStats = async (req, res) => {
+    try {
+        const { userId } = req.auth;
+        if (!userId) {
+            res.status(401).json({ message: 'Not authorized' });
+            return;
+        }
+        const user = await user_model_1.default.findOne({ clerkId: userId });
+        if (!user) {
+            res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+            return;
+        }
+        if (user.role !== 'official' && user.role !== 'admin') {
+            res.status(403).json({
+                success: false,
+                message: 'Access denied. Only officials and admins can access this endpoint.'
+            });
+            return;
+        }
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const startOfMonth = new Date();
+        startOfMonth.setDate(1);
+        startOfMonth.setHours(0, 0, 0, 0);
+        const [reviewStats, currentPending, monthlyReviews, responseTimeStats] = await Promise.all([
+            report_model_1.default.aggregate([
+                {
+                    $match: {
+                        reviewedBy: user._id,
+                        status: { $in: ['verified', 'rejected'] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 }
+                    }
+                }
+            ]),
+            report_model_1.default.countDocuments({
+                status: 'unverified'
+            }),
+            report_model_1.default.countDocuments({
+                reviewedBy: user._id,
+                status: { $in: ['verified', 'rejected'] },
+                updatedAt: { $gte: startOfMonth }
+            }),
+            report_model_1.default.aggregate([
+                {
+                    $match: {
+                        reviewedBy: user._id,
+                        status: { $in: ['verified', 'rejected'] },
+                        reviewedAt: { $exists: true }
+                    }
+                },
+                {
+                    $addFields: {
+                        responseTimeHours: {
+                            $divide: [
+                                { $subtract: ['$reviewedAt', '$createdAt'] },
+                                1000 * 60 * 60
+                            ]
+                        }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        averageResponseTime: { $avg: '$responseTimeHours' }
+                    }
+                }
+            ])
+        ]);
+        const statusBreakdown = reviewStats.reduce((acc, item) => {
+            acc[item._id] = item.count;
+            return acc;
+        }, {});
+        const reportsVerified = statusBreakdown.verified || 0;
+        const reportsRejected = statusBreakdown.rejected || 0;
+        const reportsReviewed = reportsVerified + reportsRejected;
+        const verificationAccuracy = reportsReviewed > 0
+            ? Math.round((reportsVerified / reportsReviewed) * 100)
+            : 0;
+        const averageResponseTime = responseTimeStats.length > 0
+            ? Math.round(responseTimeStats[0].averageResponseTime || 0)
+            : 0;
+        const potentialSpecializations = [
+            'Geological Hazards',
+            'Weather Events',
+            'Infrastructure',
+            'Environmental',
+            'Public Safety',
+            'Emergency Response'
+        ];
+        const specializationQuery = await report_model_1.default.aggregate([
+            {
+                $match: {
+                    reviewedBy: user._id,
+                    status: { $in: ['verified', 'rejected'] }
+                }
+            },
+            {
+                $group: {
+                    _id: '$hazardType',
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 3 }
+        ]);
+        const hazardTypeToSpecialization = {
+            'geological': 'Geological Hazards',
+            'weather': 'Weather Events',
+            'infrastructure': 'Infrastructure',
+            'environmental': 'Environmental',
+            'other': 'General Safety'
+        };
+        const specializations = specializationQuery.map(item => hazardTypeToSpecialization[item._id] || 'General Safety');
+        const accountCreationDate = user.createdAt || new Date();
+        const yearsOfExperience = Math.max(0, Math.floor((Date.now() - accountCreationDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25)));
+        const officialStats = {
+            reportsReviewed,
+            reportsVerified,
+            reportsRejected,
+            averageResponseTime,
+            currentPendingReports: currentPending,
+            monthlyReviewCount: monthlyReviews,
+            verificationAccuracy,
+            specializations: specializations.length > 0 ? specializations : ['General Safety'],
+            yearsOfExperience: yearsOfExperience > 0 ? yearsOfExperience : undefined
+        };
+        res.status(200).json({
+            success: true,
+            stats: officialStats
+        });
+    }
+    catch (error) {
+        console.log(error);
+        res.status(500).json({
+            success: false,
+            message: 'Server Error',
+            error: error.message
+        });
+    }
+};
+exports.getOfficialStats = getOfficialStats;

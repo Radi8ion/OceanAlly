@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@clerk/clerk-react';
 import { toast } from 'sonner';
+import { useState } from 'react';
 import {
   MoreHorizontal,
   CheckCircle,
@@ -9,6 +10,10 @@ import {
   ShieldAlert,
   TrendingUp,
   CalendarDays,
+  Eye,
+  Loader2,
+  Image as ImageIcon,
+  Sparkles,
 } from 'lucide-react';
 import apiClient from '../lib/api'; // Adjust the path if needed
 import { Button } from '@/components/ui/button';
@@ -43,8 +48,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-
-// --- REPORT INTERFACE ---
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import axios from 'axios';
+// --- INTERFACES ---
 interface Report {
   _id: string;
   reporterName?: string;
@@ -64,6 +70,32 @@ interface Report {
     labels_map?: { [key: string]: string };
   };
   sentiment?: {
+    score: number;
+    urgency_level: 'low' | 'medium' | 'high';
+  };
+  imageAnalysis?: {
+    caption: string;
+    classification: {
+      label: string;
+      confidence: number;
+      labels_map: { [key: string]: string };
+    };
+    sentiment: {
+      score: number;
+      urgency_level: 'low' | 'medium' | 'high';
+    };
+  };
+}
+
+interface ImageAnalysisResult {
+  status: string;
+  caption: string;
+  classification: {
+    label: string;
+    confidence: number;
+    labels_map: { [key: string]: string };
+  };
+  sentiment: {
     score: number;
     urgency_level: 'low' | 'medium' | 'high';
   };
@@ -97,6 +129,27 @@ const rejectReport = async (reportId: string, getToken: () => Promise<string>) =
       Authorization: `Bearer ${token}`,
     },
   });
+  return res.data;
+};
+
+const analyzeImage = async (imageUrl: string, getToken: () => Promise<string>): Promise<ImageAnalysisResult> => {
+  const token = await getToken();
+  
+  // Fetch the image from URL and convert to blob
+  const imageResponse = await fetch(imageUrl);
+  const imageBlob = await imageResponse.blob();
+  
+  // Create FormData and append the image
+  const formData = new FormData();
+  formData.append('image', imageBlob, 'image.jpg');
+  
+  const res = await axios.post('http://localhost:5001/analyze_image', formData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  
   return res.data;
 };
 
@@ -140,6 +193,8 @@ const getUrgencyColor = (level?: 'low' | 'medium' | 'high') => {
 const VerificationDashboard = () => {
   const { getToken } = useAuth();
   const queryClient = useQueryClient();
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
+  const [imageAnalysisLoading, setImageAnalysisLoading] = useState<string | null>(null);
 
   const { data: reports, isLoading } = useQuery({
     queryKey: ['unverifiedReports'],
@@ -164,6 +219,47 @@ const VerificationDashboard = () => {
     onError: () => toast.error("Failed to reject report."),
   });
 
+  const handleImageAnalysis = async (report: Report) => {
+    if (!report.mediaUrl) {
+      toast.error("No image available for analysis.");
+      return;
+    }
+
+    setImageAnalysisLoading(report._id);
+    
+    try {
+      const analysisResult = await analyzeImage(report.mediaUrl, getToken);
+      
+      if (analysisResult.status === 'success') {
+        // Update the report with image analysis data
+        const updatedReport = {
+          ...report,
+          imageAnalysis: {
+            caption: analysisResult.caption,
+            classification: analysisResult.classification,
+            sentiment: analysisResult.sentiment,
+          }
+        };
+        
+        setSelectedReport(updatedReport);
+        
+        // Update the reports in cache
+        queryClient.setQueryData(['unverifiedReports'], (oldReports: Report[]) => {
+          return oldReports?.map(r => r._id === report._id ? updatedReport : r) || [];
+        });
+        
+        toast.success("Image analysis completed!");
+      } else {
+        toast.error("Failed to analyze image.");
+      }
+    } catch (error) {
+      console.error('Image analysis error:', error);
+      toast.error("Error analyzing image. Please try again.");
+    } finally {
+      setImageAnalysisLoading(null);
+    }
+  };
+
   if (isLoading) return <div className="p-8 text-center">Loading reports for verification...</div>;
 
   return (
@@ -182,6 +278,7 @@ const VerificationDashboard = () => {
                 <TableHead className="font-semibold text-slate-600">Urgency</TableHead>
                 <TableHead className="font-semibold text-slate-600">Reporter</TableHead>
                 <TableHead className="font-semibold text-slate-600">Date</TableHead>
+                <TableHead className="font-semibold text-slate-600">Media</TableHead>
                 <TableHead className="text-right font-semibold text-slate-600">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -207,6 +304,14 @@ const VerificationDashboard = () => {
                     </TableCell>
                     <TableCell className="font-medium text-slate-700">{report.reporterName || 'Anonymous'}</TableCell>
                     <TableCell className="text-sm text-slate-500">{new Date(report.createdAt).toLocaleString()}</TableCell>
+                    <TableCell>
+                      {report.mediaUrl && (
+                        <Badge variant="outline" className="text-green-600 border-green-200">
+                          <ImageIcon className="mr-1 h-3 w-3" />
+                          Image
+                        </Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Dialog>
                         <DropdownMenu>
@@ -218,7 +323,10 @@ const VerificationDashboard = () => {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DialogTrigger asChild>
-                              <DropdownMenuItem>View Details</DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setSelectedReport(report)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                              </DropdownMenuItem>
                             </DialogTrigger>
                             <DropdownMenuItem onClick={() => verifyMutation.mutate(report._id)}>
                               <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Verify
@@ -228,74 +336,150 @@ const VerificationDashboard = () => {
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        <DialogContent className="max-w-3xl">
-                          <DialogHeader>
-                            <DialogTitle className="text-2xl font-bold text-slate-800">Report Details</DialogTitle>
-                            <DialogDescription className="capitalize flex items-center gap-2 text-slate-500">
-                              {report.hazardType.replace('_', ' ')}
-                              <span className="text-slate-300">|</span>
-                              <CalendarDays className="h-4 w-4 inline-block mr-1" />
-                              {new Date(report.createdAt).toLocaleString()}
-                            </DialogDescription>
-                          </DialogHeader>
-                          <Separator className="my-4" />
-                          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-                            <div className="md:col-span-3 space-y-4">
-                              <div>
-                                <h4 className="font-semibold text-slate-700 mb-1">Description</h4>
-                                <p className="text-slate-600 bg-slate-50 p-3 rounded-md border">{report.description}</p>
-                              </div>
-                              <div>
-                                <h4 className="font-semibold text-slate-700 mb-1">Location Details</h4>
-                                <p className="text-slate-600">
-                                  {report.locationDescription} ({report.location.coordinates[1].toFixed(4)}, {report.location.coordinates[0].toFixed(4)})
-                                </p>
-                              </div>
-                              {report.mediaUrl && (
+                        
+                        {selectedReport && selectedReport._id === report._id && (
+                          <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle className="text-2xl font-bold text-slate-800">Report Details</DialogTitle>
+                              <DialogDescription className="capitalize flex items-center gap-2 text-slate-500">
+                                {selectedReport.hazardType.replace('_', ' ')}
+                                <span className="text-slate-300">|</span>
+                                <CalendarDays className="h-4 w-4 inline-block mr-1" />
+                                {new Date(selectedReport.createdAt).toLocaleString()}
+                              </DialogDescription>
+                            </DialogHeader>
+                            <Separator className="my-4" />
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                              <div className="lg:col-span-3 space-y-4">
                                 <div>
-                                  <h4 className="font-semibold text-slate-700 mb-2">Attached Media</h4>
-                                  <img src={report.mediaUrl} alt="Hazard media" className="rounded-md border-2 border-slate-200 max-h-64 w-full object-contain" />
+                                  <h4 className="font-semibold text-slate-700 mb-1">Description</h4>
+                                  <p className="text-slate-600 bg-slate-50 p-3 rounded-md border">{selectedReport.description}</p>
                                 </div>
-                              )}
-                            </div>
-                            <div className="md:col-span-2 space-y-4 rounded-lg bg-slate-100 p-4 border border-slate-200">
-                              <h3 className="font-bold text-lg flex items-center text-slate-800">
-                                <BrainCircuit className="mr-2 h-5 w-5 text-indigo-500" /> AI Analysis
-                              </h3>
-                              {report.classification && report.sentiment ? (
-                                <div className="space-y-4">
-                                  <div>
-                                    <h4 className="font-semibold text-slate-700">Suggested Relevance</h4>
-                                    <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${relevance.color}`}>
-                                      {relevance.text}
-                                    </Badge>
-                                    <p className="text-sm text-slate-500 mt-2 flex items-center">
-                                      <TrendingUp className="h-4 w-4 mr-1.5" />
-                                      Certainty Score: {(report.classification.confidence * 100).toFixed(1)}%
-                                    </p>
-                                  </div>
-                                  <Separator />
-                                  <div>
-                                    <h4 className="font-semibold text-slate-700">Predicted Urgency</h4>
-                                    <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${getUrgencyColor(report.sentiment.urgency_level)}`}>
-                                      <ShieldAlert className="mr-1.5 h-4 w-4" />
-                                      {report.sentiment.urgency_level}
-                                    </Badge>
-                                  </div>
+                                <div>
+                                  <h4 className="font-semibold text-slate-700 mb-1">Location Details</h4>
+                                  <p className="text-slate-600">
+                                    {selectedReport.locationDescription} ({selectedReport.location.coordinates[1].toFixed(4)}, {selectedReport.location.coordinates[0].toFixed(4)})
+                                  </p>
                                 </div>
-                              ) : (
-                                <p className="text-slate-500">No AI analysis available for this report.</p>
-                              )}
+                                {selectedReport.mediaUrl && (
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <h4 className="font-semibold text-slate-700">Attached Media</h4>
+                                      <Button
+                                        onClick={() => handleImageAnalysis(selectedReport)}
+                                        disabled={imageAnalysisLoading === selectedReport._id}
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                      >
+                                        {imageAnalysisLoading === selectedReport._id ? (
+                                          <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Analyzing...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Sparkles className="mr-2 h-4 w-4" />
+                                            Analyze Image
+                                          </>
+                                        )}
+                                      </Button>
+                                    </div>
+                                    <img 
+                                      src={selectedReport.mediaUrl} 
+                                      alt="Hazard media" 
+                                      className="rounded-md border-2 border-slate-200 max-h-64 w-full object-contain" 
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Image Analysis Results */}
+                                {selectedReport.imageAnalysis && (
+                                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                                    <h4 className="font-semibold text-indigo-800 mb-2 flex items-center">
+                                      <Sparkles className="mr-2 h-4 w-4" />
+                                      AI Image Analysis
+                                    </h4>
+                                    <div className="space-y-3">
+                                      <div>
+                                        <p className="text-sm font-medium text-indigo-700">Generated Caption:</p>
+                                        <p className="text-sm text-indigo-600 bg-white p-2 rounded border">
+                                          {selectedReport.imageAnalysis.caption}
+                                        </p>
+                                      </div>
+                                      <div className="flex gap-4">
+                                        <div>
+                                          <p className="text-sm font-medium text-indigo-700">Image Relevance:</p>
+                                          <Badge className={`mt-1 ${getRelevanceDisplay(selectedReport.imageAnalysis.classification).color}`}>
+                                            {getRelevanceDisplay(selectedReport.imageAnalysis.classification).text}
+                                          </Badge>
+                                        </div>
+                                        <div>
+                                          <p className="text-sm font-medium text-indigo-700">Image Urgency:</p>
+                                          <Badge className={`mt-1 ${getUrgencyColor(selectedReport.imageAnalysis.sentiment.urgency_level)}`}>
+                                            {selectedReport.imageAnalysis.sentiment.urgency_level}
+                                          </Badge>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* AI Analysis Section */}
+                              <div className="lg:col-span-2 space-y-4 rounded-lg bg-slate-100 p-4 border border-slate-200">
+                                <h3 className="font-bold text-lg flex items-center text-slate-800">
+                                  <BrainCircuit className="mr-2 h-5 w-5 text-indigo-500" /> Text Analysis
+                                </h3>
+                                {selectedReport.classification && selectedReport.sentiment ? (
+                                  <div className="space-y-4">
+                                    <div>
+                                      <h4 className="font-semibold text-slate-700">Text Relevance</h4>
+                                      <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${relevance.color}`}>
+                                        {relevance.text}
+                                      </Badge>
+                                      <p className="text-sm text-slate-500 mt-2 flex items-center">
+                                        <TrendingUp className="h-4 w-4 mr-1.5" />
+                                        Certainty: {(selectedReport.classification.confidence * 100).toFixed(1)}%
+                                      </p>
+                                    </div>
+                                    <Separator />
+                                    <div>
+                                      <h4 className="font-semibold text-slate-700">Text Urgency</h4>
+                                      <Badge className={`capitalize mt-1 font-semibold text-base py-1 px-3 ${getUrgencyColor(selectedReport.sentiment.urgency_level)}`}>
+                                        <ShieldAlert className="mr-1.5 h-4 w-4" />
+                                        {selectedReport.sentiment.urgency_level}
+                                      </Badge>
+                                    </div>
+
+                                    {/* Comparison Alert */}
+                                    {selectedReport.imageAnalysis && (
+                                      <div className="mt-4">
+                                        <Alert>
+                                          <BrainCircuit className="h-4 w-4" />
+                                          <AlertDescription className="text-sm">
+                                            <strong>Analysis Comparison:</strong><br />
+                                            Text vs Image relevance: {relevance.text} vs {getRelevanceDisplay(selectedReport.imageAnalysis.classification).text}
+                                          </AlertDescription>
+                                        </Alert>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <p className="text-slate-500">No text analysis available for this report.</p>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </DialogContent>
+                          </DialogContent>
+                        )}
                       </Dialog>
                     </TableCell>
                   </TableRow>
                 );
               }) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-slate-500">No pending reports at this time.</TableCell>
+                  <TableCell colSpan={7} className="h-24 text-center text-slate-500">No pending reports at this time.</TableCell>
                 </TableRow>
               )}
             </TableBody>

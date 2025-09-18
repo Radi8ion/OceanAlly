@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import os
 
 # Load model and tokenizer
-MODEL_PATH = "model/"
+MODEL_PATH = 'models/indicbert'
 tokenizer = None
 model = None
 

@@ -10,4 +10,5 @@ const router = express_1.default.Router();
 router.get('/me', auth_middleware_1.protect, auth_controller_1.getMe);
 router.put('/me', auth_middleware_1.protect, auth_controller_1.updateMe);
 router.get('/me/stats', auth_middleware_1.protect, auth_controller_1.getUserStats);
+router.get('/me/official-stats', auth_middleware_1.protect, auth_controller_1.getOfficialStats);
 exports.default = router;
