@@ -73,7 +73,7 @@ const Dashboard = () => {
     setVideosLoading(true);
     try {
       // Remove Authorization header since Flask route doesn't require it
-    const response = await axios.get("http://localhost:5001/recent-videos?debug=true&strict=false");
+    const response = await axios.get("http://localhost:5001/recent-videos");
       
       console.log("Full Response:", response);
       console.log("Response Data:", response.data);

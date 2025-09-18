@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/clerk-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useState } from 'react';
 import apiClient from '@/lib/api';
 
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,16 @@ import {
   Target,
   Zap,
   Crown,
-  Medal
+  Medal,
+  Edit,
+  Save,
+  X,
+  Eye,
+  UserCheck,
+  FileCheck,
+  Users,
+  Calendar,
+  Activity
 } from 'lucide-react';
 
 // Define the User type to match backend
@@ -48,7 +58,7 @@ interface User {
   role: 'citizen' | 'official' | 'admin';
 }
 
-// User statistics interface
+// User statistics interface for citizens
 interface UserStats {
   totalReports: number;
   verifiedReports: number;
@@ -64,7 +74,20 @@ interface UserStats {
   };
 }
 
-// Gamification types
+// Official statistics interface
+interface OfficialStats {
+  reportsReviewed: number;
+  reportsVerified: number;
+  reportsRejected: number;
+  averageResponseTime: number; // in hours
+  currentPendingReports: number;
+  monthlyReviewCount: number;
+  verificationAccuracy: number; // percentage
+  specializations: string[];
+  yearsOfExperience?: number;
+}
+
+// Gamification types (for citizens only)
 interface UserLevel {
   level: number;
   title: string;
@@ -99,7 +122,7 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-// Gamification logic
+// Gamification logic (for citizens only)
 const getUserLevel = (verifiedReports: number): UserLevel => {
   const levels: UserLevel[] = [
     {
@@ -290,11 +313,21 @@ const fetchCurrentUser = async (getToken: () => Promise<string | null>): Promise
   return response.data.user;
 };
 
-// API function to fetch user statistics
+// API function to fetch user statistics (for citizens)
 const fetchUserStats = async (getToken: () => Promise<string | null>): Promise<UserStats> => {
   const token = await getToken();
   if (!token) throw new Error("Authentication token not found.");
   const response = await apiClient.get('/auth/me/stats', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return response.data.stats;
+};
+
+// API function to fetch official statistics
+const fetchOfficialStats = async (getToken: () => Promise<string | null>): Promise<OfficialStats> => {
+  const token = await getToken();
+  if (!token) throw new Error("Authentication token not found.");
+  const response = await apiClient.get('/auth/me/official-stats', {
     headers: { Authorization: `Bearer ${token}` },
   });
   return response.data.stats;
@@ -314,6 +347,7 @@ const ProfilePage = () => {
     const { getToken } = useAuth();
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const [isEditMode, setIsEditMode] = useState(false);
 
     // Query to fetch user data
     const { data: user, isLoading: userLoading, isError: userError } = useQuery<User>({
@@ -321,11 +355,18 @@ const ProfilePage = () => {
         queryFn: () => fetchCurrentUser(getToken),
     });
 
-    // Query to fetch user statistics
+    // Query to fetch user statistics (for citizens only)
     const { data: stats, isLoading: statsLoading } = useQuery<UserStats>({
         queryKey: ['userStats'],
         queryFn: () => fetchUserStats(getToken),
-        enabled: !!user,
+        enabled: !!user && user.role === 'citizen',
+    });
+
+    // Query to fetch official statistics (for officials and admins)
+    const { data: officialStats, isLoading: officialStatsLoading } = useQuery<OfficialStats>({
+        queryKey: ['officialStats'],
+        queryFn: () => fetchOfficialStats(getToken),
+        enabled: !!user && (user.role === 'official' || user.role === 'admin'),
     });
 
     // Form setup with react-hook-form
@@ -345,6 +386,7 @@ const ProfilePage = () => {
         mutationFn: (data: ProfileFormValues) => updateCurrentUser({ data, getToken }),
         onSuccess: (updatedUser) => {
             queryClient.invalidateQueries({ queryKey: ['me'] });
+            setIsEditMode(false);
             toast({
                 title: "Success!",
                 description: "Your profile has been updated successfully.",
@@ -361,6 +403,11 @@ const ProfilePage = () => {
 
     const onSubmit = (data: ProfileFormValues) => {
         mutation.mutate(data);
+    };
+
+    const handleCancelEdit = () => {
+        form.reset();
+        setIsEditMode(false);
     };
 
     if (userLoading) {
@@ -510,235 +557,46 @@ const ProfilePage = () => {
                             </CardContent>
                         </Card>
                     </div>
-
-                    {/* Level Roadmap */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center space-x-2">
-                                <Target className="w-5 h-5 text-primary" />
-                                <span>Level Roadmap</span>
-                            </CardTitle>
-                            <CardDescription>
-                                Your journey to becoming a hazard reporting champion
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                {(() => {
-                                    const allLevels = [
-                                        { level: 1, title: "Observer", icon: User, color: "text-gray-500", minReports: 0, maxReports: 4, description: "New to hazard reporting", perks: ["Basic reporting access"] },
-                                        { level: 2, title: "Reporter", icon: AlertTriangle, color: "text-blue-500", minReports: 5, maxReports: 14, description: "Building reporting skills", perks: ["Priority support", "Basic analytics"] },
-                                        { level: 3, title: "Vigilant", icon: CheckCircle, color: "text-green-500", minReports: 15, maxReports: 29, description: "Consistent quality reporter", perks: ["Advanced features", "Report templates", "Community recognition"] },
-                                        { level: 4, title: "Guardian", icon: Shield, color: "text-purple-500", minReports: 30, maxReports: 49, description: "Trusted community protector", perks: ["Mentorship opportunities", "Beta features", "Expert badge"] },
-                                        { level: 5, title: "Sentinel", icon: Crown, color: "text-yellow-500", minReports: 50, maxReports: 99, description: "Elite hazard sentinel", perks: ["Leadership panel", "Feature requests", "VIP support"] },
-                                        { level: 6, title: "Champion", icon: Trophy, color: "text-orange-500", minReports: 100, maxReports: Infinity, description: "Legendary protector", perks: ["Hall of fame", "Platform influence", "Special recognition"] }
-                                    ];
-
-                                    return allLevels.map((level, index) => {
-                                        const isCurrentLevel = currentLevel?.level === level.level;
-                                        const isCompleted = (stats?.verifiedReports || 0) >= level.minReports && level.level < (currentLevel?.level || 0);
-                                        const isNext = level.level === (currentLevel?.level || 0) + 1;
-                                        const isFuture = level.level > (currentLevel?.level || 0) + 1;
-
-                                        return (
-                                            <div key={level.level} className="relative">
-                                                {/* Connection line */}
-                                                {index < allLevels.length - 1 && (
-                                                    <div className={`absolute left-6 top-12 w-0.5 h-8 ${
-                                                        isCompleted || isCurrentLevel ? 'bg-primary' : 'bg-muted'
-                                                    }`} />
-                                                )}
-                                                
-                                                <div className={`flex items-start space-x-4 p-4 rounded-lg border-2 transition-all ${
-                                                    isCurrentLevel 
-                                                        ? 'border-primary bg-primary/5 shadow-md' 
-                                                        : isCompleted
-                                                        ? 'border-green-200 bg-green-50/50'
-                                                        : isNext
-                                                        ? 'border-blue-200 bg-blue-50/50'
-                                                        : 'border-muted bg-muted/20'
-                                                }`}>
-                                                    {/* Level Icon */}
-                                                    <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center ${
-                                                        isCurrentLevel || isCompleted
-                                                            ? 'bg-primary text-primary-foreground'
-                                                            : isNext
-                                                            ? 'bg-blue-100 text-blue-600'
-                                                            : 'bg-muted text-muted-foreground'
-                                                    }`}>
-                                                        {isCompleted ? (
-                                                            <CheckCircle className="w-6 h-6" />
-                                                        ) : (
-                                                            <level.icon className="w-6 h-6" />
-                                                        )}
-                                                    </div>
-
-                                                    {/* Level Info */}
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center space-x-3 mb-2">
-                                                            <h3 className={`font-semibold ${
-                                                                isCurrentLevel ? 'text-primary' : 
-                                                                isCompleted ? 'text-green-700' :
-                                                                isNext ? 'text-blue-700' : 'text-muted-foreground'
-                                                            }`}>
-                                                                Level {level.level}: {level.title}
-                                                            </h3>
-                                                            <Badge variant={
-                                                                isCurrentLevel ? 'default' :
-                                                                isCompleted ? 'secondary' :
-                                                                isNext ? 'outline' : 'secondary'
-                                                            } className="text-xs">
-                                                                {isCurrentLevel ? 'Current' :
-                                                                isCompleted ? 'Completed' :
-                                                                isNext ? 'Next' : 'Future'}
-                                                            </Badge>
-                                                        </div>
-                                                        
-                                                        <p className="text-sm text-muted-foreground mb-3">
-                                                            {level.description}
-                                                        </p>
-
-                                                        <div className="flex items-center justify-between mb-3">
-                                                            <span className="text-sm font-medium">
-                                                                {level.minReports === 0 ? 'Starting level' :
-                                                                level.maxReports === Infinity ? `${level.minReports}+ reports` :
-                                                                `${level.minReports}-${level.maxReports} reports`}
-                                                            </span>
-                                                            {isCurrentLevel && nextLevel && (
-                                                                <span className="text-sm text-muted-foreground">
-                                                                    {nextLevel.minReports - (stats?.verifiedReports || 0)} more to next level
-                                                                </span>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Level Perks */}
-                                                        <div className="space-y-1">
-                                                            <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                                                Perks & Benefits:
-                                                            </h4>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {level.perks.map((perk, perkIndex) => (
-                                                                    <Badge 
-                                                                        key={perkIndex} 
-                                                                        variant="outline" 
-                                                                        className="text-xs"
-                                                                    >
-                                                                        {perk}
-                                                                    </Badge>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Achievement Roadmap */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center space-x-2">
-                                <Medal className="w-5 h-5 text-yellow-500" />
-                                <span>Achievement Roadmap</span>
-                            </CardTitle>
-                            <CardDescription>
-                                All available achievements and your progress
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {achievements.map((achievement) => (
-                                    <div 
-                                        key={achievement.id} 
-                                        className={`p-4 rounded-lg border-2 transition-all ${
-                                            achievement.isUnlocked 
-                                                ? 'border-green-200 bg-green-50/50' 
-                                                : 'border-muted bg-muted/20'
-                                        }`}
-                                    >
-                                        <div className="flex items-center space-x-3 mb-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                                                achievement.isUnlocked 
-                                                    ? 'bg-green-100' 
-                                                    : 'bg-muted'
-                                            }`}>
-                                                {achievement.isUnlocked ? (
-                                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                                ) : (
-                                                    <achievement.icon className={`w-4 h-4 ${achievement.color}`} />
-                                                )}
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <h4 className={`font-medium text-sm ${
-                                                    achievement.isUnlocked ? 'text-green-700' : 'text-muted-foreground'
-                                                }`}>
-                                                    {achievement.title}
-                                                </h4>
-                                                <Badge 
-                                                    variant={achievement.isUnlocked ? 'secondary' : 'outline'} 
-                                                    className="text-xs"
-                                                >
-                                                    {achievement.category}
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                        
-                                        <p className="text-xs text-muted-foreground mb-2">
-                                            {achievement.description}
-                                        </p>
-                                        
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs font-medium">
-                                                {achievement.category === 'quality' 
-                                                    ? `${achievement.requirement}% rate required`
-                                                    : `${achievement.requirement} required`}
-                                            </span>
-                                            {achievement.isUnlocked && (
-                                                <Badge variant="secondary" className="text-xs">
-                                                    ✓ Unlocked
-                                                </Badge>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {/* Statistics Cards - Left Column */}
                 <div className="lg:col-span-1 space-y-6">
-                    {/* Report Statistics */}
+                    {/* Statistics Card - Different for Citizens vs Officials */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center space-x-2">
-                                <TrendingUp className="w-5 h-5" />
-                                <span>Report Statistics</span>
+                                {isCitizen ? (
+                                    <>
+                                        <TrendingUp className="w-5 h-5" />
+                                        <span>Report Statistics</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Activity className="w-5 h-5" />
+                                        <span>Review Statistics</span>
+                                    </>
+                                )}
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            {statsLoading ? (
+                            {(statsLoading || officialStatsLoading) ? (
                                 <div className="flex justify-center py-4">
                                     <Loader2 className="w-6 h-6 animate-spin" />
                                 </div>
-                            ) : (
+                            ) : isCitizen && stats ? (
                                 <>
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="text-center p-4 bg-primary/5 rounded-lg">
                                             <div className="text-2xl font-bold text-primary">
-                                                {stats?.totalReports || 0}
+                                                {stats.totalReports || 0}
                                             </div>
                                             <div className="text-sm text-muted-foreground">Total Reports</div>
                                         </div>
                                         <div className="text-center p-4 bg-green-50 rounded-lg">
                                             <div className="text-2xl font-bold text-green-600">
-                                                {stats?.verifiedReports || 0}
+                                                {stats.verifiedReports || 0}
                                             </div>
                                             <div className="text-sm text-muted-foreground">Verified</div>
                                         </div>
@@ -747,13 +605,13 @@ const ProfilePage = () => {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="text-center p-4 bg-amber-50 rounded-lg">
                                             <div className="text-2xl font-bold text-amber-600">
-                                                {stats?.unverifiedReports || 0}
+                                                {stats.unverifiedReports || 0}
                                             </div>
                                             <div className="text-sm text-muted-foreground">Pending</div>
                                         </div>
                                         <div className="text-center p-4 bg-red-50 rounded-lg">
                                             <div className="text-2xl font-bold text-red-600">
-                                                {stats?.emergencyReports || 0}
+                                                {stats.emergencyReports || 0}
                                             </div>
                                             <div className="text-sm text-muted-foreground">Emergency</div>
                                         </div>
@@ -762,12 +620,11 @@ const ProfilePage = () => {
                                     <div className="pt-4 border-t">
                                         <div className="flex items-center justify-between text-sm">
                                             <span className="text-muted-foreground">Recent (30 days)</span>
-                                            <span className="font-medium">{stats?.recentReports || 0}</span>
+                                            <span className="font-medium">{stats.recentReports || 0}</span>
                                         </div>
                                     </div>
 
-                                    {/* Verification Rate - Only show for citizens */}
-                                    {stats && stats.totalReports > 0 && isCitizen && (
+                                    {stats.totalReports > 0 && (
                                         <div className="pt-2 border-t">
                                             <div className="flex items-center justify-between text-sm mb-1">
                                                 <span className="text-muted-foreground">Verification Rate</span>
@@ -782,12 +639,72 @@ const ProfilePage = () => {
                                         </div>
                                     )}
                                 </>
-                            )}
+                            ) : isOfficial && officialStats ? (
+                                <>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="text-center p-4 bg-blue-50 rounded-lg">
+                                            <div className="text-2xl font-bold text-blue-600">
+                                                {officialStats.reportsReviewed || 0}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">Total Reviewed</div>
+                                        </div>
+                                        <div className="text-center p-4 bg-green-50 rounded-lg">
+                                            <div className="text-2xl font-bold text-green-600">
+                                                {officialStats.reportsVerified || 0}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">Verified</div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="text-center p-4 bg-red-50 rounded-lg">
+                                            <div className="text-2xl font-bold text-red-600">
+                                                {officialStats.reportsRejected || 0}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">Rejected</div>
+                                        </div>
+                                        <div className="text-center p-4 bg-amber-50 rounded-lg">
+                                            <div className="text-2xl font-bold text-amber-600">
+                                                {officialStats.currentPendingReports || 0}
+                                            </div>
+                                            <div className="text-sm text-muted-foreground">Pending</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t space-y-2">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Avg. Response Time</span>
+                                            <span className="font-medium">{officialStats.averageResponseTime || 0}h</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Monthly Reviews</span>
+                                            <span className="font-medium">{officialStats.monthlyReviewCount || 0}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-muted-foreground">Accuracy Rate</span>
+                                            <span className="font-medium">{officialStats.verificationAccuracy || 0}%</span>
+                                        </div>
+                                    </div>
+
+                                    {officialStats.specializations && officialStats.specializations.length > 0 && (
+                                        <div className="pt-2 border-t">
+                                            <h4 className="text-sm font-medium mb-2">Specializations:</h4>
+                                            <div className="flex flex-wrap gap-1">
+                                                {officialStats.specializations.map((spec, index) => (
+                                                    <Badge key={index} variant="outline" className="text-xs">
+                                                        {spec}
+                                                    </Badge>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            ) : null}
                         </CardContent>
                     </Card>
 
-                    {/* Hazard Types Breakdown */}
-                    {stats && stats.totalReports > 0 && (
+                    {/* Hazard Types Breakdown - Only for Citizens */}
+                    {isCitizen && stats && stats.totalReports > 0 && (
                         <Card>
                             <CardHeader>
                                 <CardTitle className="flex items-center space-x-2">
@@ -807,106 +724,242 @@ const ProfilePage = () => {
                             </CardContent>
                         </Card>
                     )}
+
+                    {/* Professional Info Card - Only for Officials */}
+                    {isOfficial && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center space-x-2">
+                                    <UserCheck className="w-5 h-5" />
+                                    <span>Professional Info</span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-muted-foreground">Role</span>
+                                    <Badge variant="secondary">
+                                        <Shield className="w-3 h-3 mr-1" />
+                                        {user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1)}
+                                    </Badge>
+                                </div>
+                                {user?.organization && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Organization</span>
+                                        <span className="text-sm font-medium">{user.organization}</span>
+                                    </div>
+                                )}
+                                {officialStats?.yearsOfExperience && (
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Experience</span>
+                                        <span className="text-sm font-medium">{officialStats.yearsOfExperience} years</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-muted-foreground">Status</span>
+                                    <Badge className="bg-green-100 text-green-700">
+                                        <CheckCircle className="w-3 h-3 mr-1" />
+                                        Active
+                                    </Badge>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
 
                 {/* Profile Form - Right Column */}
                 <div className="lg:col-span-2">
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Personal Information</CardTitle>
-                            <CardDescription>Update your personal details here.</CardDescription>
+                        <CardHeader className="flex flex-row items-center justify-between">
+                            <div>
+                                <CardTitle>Personal Information</CardTitle>
+                                <CardDescription>
+                                    {isEditMode ? "Edit your personal details below." : "View your personal details."}
+                                </CardDescription>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                                {!isEditMode ? (
+                                    <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => setIsEditMode(true)}
+                                    >
+                                        <Edit className="w-4 h-4 mr-2" />
+                                        Edit
+                                    </Button>
+                                ) : (
+                                    <div className="flex space-x-2">
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm"
+                                            onClick={handleCancelEdit}
+                                            disabled={mutation.isPending}
+                                        >
+                                            <X className="w-4 h-4 mr-2" />
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent>
-                            <Form {...form}>
-                                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                            {isEditMode ? (
+                                <Form {...form}>
+                                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <FormField
+                                                control={form.control}
+                                                name="firstName"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>First Name</FormLabel>
+                                                        <FormControl>
+                                                            <Input placeholder="John" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                            <FormField
+                                                control={form.control}
+                                                name="lastName"
+                                                render={({ field }) => (
+                                                    <FormItem>
+                                                        <FormLabel>Last Name</FormLabel>
+                                                        <FormControl>
+                                                            <Input placeholder="Doe" {...field} />
+                                                        </FormControl>
+                                                        <FormMessage />
+                                                    </FormItem>
+                                                )}
+                                            />
+                                        </div>
+
+                                        <FormField
+                                            control={form.control}
+                                            name="phone"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="flex items-center space-x-2">
+                                                        <Phone className="w-4 h-4" />
+                                                        <span>Phone Number</span>
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="+91 12345 67890" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+
+                                        <FormField
+                                            control={form.control}
+                                            name="organization"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="flex items-center space-x-2">
+                                                        <Building className="w-4 h-4" />
+                                                        <span>Organization</span>
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="Ministry of Earth Sciences" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+
+                                        <FormField
+                                            control={form.control}
+                                            name="location"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel className="flex items-center space-x-2">
+                                                        <MapPin className="w-4 h-4" />
+                                                        <span>Location</span>
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Input placeholder="New Delhi, India" {...field} />
+                                                    </FormControl>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+
+                                        <Separator />
+
+                                        <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
+                                            {mutation.isPending ? (
+                                                <>
+                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                    Updating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Save className="mr-2 h-4 w-4" />
+                                                    Save Changes
+                                                </>
+                                            )}
+                                        </Button>
+                                    </form>
+                                </Form>
+                            ) : (
+                                <div className="space-y-6">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <FormField
-                                            control={form.control}
-                                            name="firstName"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>First Name</FormLabel>
-                                                    <FormControl>
-                                                        <Input placeholder="John" {...field} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
-                                        <FormField
-                                            control={form.control}
-                                            name="lastName"
-                                            render={({ field }) => (
-                                                <FormItem>
-                                                    <FormLabel>Last Name</FormLabel>
-                                                    <FormControl>
-                                                        <Input placeholder="Doe" {...field} />
-                                                    </FormControl>
-                                                    <FormMessage />
-                                                </FormItem>
-                                            )}
-                                        />
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-muted-foreground">First Name</label>
+                                            <div className="p-3 bg-muted/50 rounded-md">
+                                                {user?.firstName || 'Not provided'}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-muted-foreground">Last Name</label>
+                                            <div className="p-3 bg-muted/50 rounded-md">
+                                                {user?.lastName || 'Not provided'}
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <FormField
-                                        control={form.control}
-                                        name="phone"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="flex items-center space-x-2">
-                                                    <Phone className="w-4 h-4" />
-                                                    <span>Phone Number</span>
-                                                </FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="+91 12345 67890" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <div className="space-y-1">
+                                        <label className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
+                                            <Mail className="w-4 h-4" />
+                                            <span>Email</span>
+                                        </label>
+                                        <div className="p-3 bg-muted/50 rounded-md">
+                                            {user?.email}
+                                        </div>
+                                    </div>
 
-                                    <FormField
-                                        control={form.control}
-                                        name="organization"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="flex items-center space-x-2">
-                                                    <Building className="w-4 h-4" />
-                                                    <span>Organization</span>
-                                                </FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="Ministry of Earth Sciences" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <div className="space-y-1">
+                                        <label className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
+                                            <Phone className="w-4 h-4" />
+                                            <span>Phone Number</span>
+                                        </label>
+                                        <div className="p-3 bg-muted/50 rounded-md">
+                                            {user?.phone || 'Not provided'}
+                                        </div>
+                                    </div>
 
-                                    <FormField
-                                        control={form.control}
-                                        name="location"
-                                        render={({ field }) => (
-                                            <FormItem>
-                                                <FormLabel className="flex items-center space-x-2">
-                                                    <MapPin className="w-4 h-4" />
-                                                    <span>Location</span>
-                                                </FormLabel>
-                                                <FormControl>
-                                                    <Input placeholder="New Delhi, India" {...field} />
-                                                </FormControl>
-                                                <FormMessage />
-                                            </FormItem>
-                                        )}
-                                    />
+                                    <div className="space-y-1">
+                                        <label className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
+                                            <Building className="w-4 h-4" />
+                                            <span>Organization</span>
+                                        </label>
+                                        <div className="p-3 bg-muted/50 rounded-md">
+                                            {user?.organization || 'Not provided'}
+                                        </div>
+                                    </div>
 
-                                    <Separator />
-
-                                    <Button type="submit" disabled={mutation.isPending} className="w-full sm:w-auto">
-                                        {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Update Profile
-                                    </Button>
-                                </form>
-                            </Form>
+                                    <div className="space-y-1">
+                                        <label className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
+                                            <MapPin className="w-4 h-4" />
+                                            <span>Location</span>
+                                        </label>
+                                        <div className="p-3 bg-muted/50 rounded-md">
+                                            {user?.location || 'Not provided'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

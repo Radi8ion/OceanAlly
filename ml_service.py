@@ -12,7 +12,9 @@ from utils.classifier import classify_text
 from utils.sentiment import analyze_sentiment, get_urgency_level
 from utils.clustering import find_hotspots
 from utils.chatbot import load_dataset, get_answer
-
+# Add these with your other imports at the top of app.py
+from PIL import Image
+from transformers import BlipProcessor, BlipForConditionalGeneration
 # --- Cache and Rate Limiting ---
 tweet_cache = {
     'data': [],
@@ -62,6 +64,18 @@ except Exception as e:
     model = None
 
 RELEVANCE_THRESHOLD = 0.3  # Lowered from 0.5
+
+# Place this code block near your IndicBERT model setup in app.py
+BLIP_MODEL_PATH = 'models/blip2/'
+# --- NEW: BLIP Model Setup for Image Captioning ---
+try:
+    blip_processor = BlipProcessor.from_pretrained(BLIP_MODEL_PATH)
+    blip_model = BlipForConditionalGeneration.from_pretrained(BLIP_MODEL_PATH)
+    print("✅ BLIP image captioning model loaded successfully.")
+except Exception as e:
+    print(f"❌ Error loading BLIP model: {e}")
+    blip_processor = None
+    blip_model = None
 
 # --- Indian Locations Dataset with Aliases ---
 try:
@@ -201,9 +215,9 @@ def recent_videos():
         }), 500
 
     try:
-        # Set date range (last 30 days)
-        one_month_ago = datetime.utcnow() - timedelta(days=30)
-        published_after = one_month_ago.isoformat("T") + "Z"
+        # Set date range (last 90 days / 3 months)
+        three_months_ago = datetime.utcnow() - timedelta(days=90)
+        published_after = three_months_ago.isoformat("T") + "Z"
 
         # YouTube API parameters
         params = {
@@ -317,7 +331,6 @@ def recent_videos():
             "status": "error", 
             "message": f"Error fetching videos: {str(e)}"
         }), 500
-
 # --- Other Routes ---
 @app.route('/health', methods=['GET'])
 def health():
@@ -393,6 +406,60 @@ def chat_route():
         return jsonify({'response': response})
     except Exception as e:
         return jsonify({'error': f'Chat processing failed: {str(e)}'}), 500
+
+# Add this new route before the if __name__ == '__main__': line in app.py
+
+# --- NEW: Image Analysis Route ---
+@app.route("/analyze_image", methods=["POST"])
+def analyze_image():
+    if not blip_model or not model:
+        return jsonify({
+            "status": "error",
+            "message": "AI models are not available. Please check server logs."
+        }), 503
+
+    if 'image' not in request.files:
+        return jsonify({"status": "error", "message": "No image file provided"}), 400
+
+    file = request.files['image']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No image file selected"}), 400
+
+    try:
+        # 1. Generate caption with BLIP
+        raw_image = Image.open(file.stream).convert("RGB")
+        inputs = blip_processor(raw_image, return_tensors="pt")
+        out = blip_model.generate(**inputs, max_new_tokens=50)
+        caption = blip_processor.decode(out[0], skip_special_tokens=True)
+
+        # 2. Analyze caption with IndicBERT (using your existing functions)
+        classification_label, confidence = classify_text(caption)
+        sentiment_score = analyze_sentiment(caption)
+        urgency_level = get_urgency_level(sentiment_score, classification_label)
+
+        # 3. Send the complete analysis back to the frontend
+        response_data = {
+            "status": "success",
+            "caption": caption,
+            "classification": {
+                "label": classification_label,
+                "confidence": confidence,
+                "labels_map": { 
+                    '0': 'Not Relevant',
+                    '1': 'Relevant',
+                    '2': 'Highly Relevant'
+                }
+            },
+            "sentiment": {
+                "score": sentiment_score,
+                "urgency_level": urgency_level
+            }
+        }
+        return jsonify(response_data)
+
+    except Exception as e:
+        print(f"Error during image analysis: {e}")
+        return jsonify({"status": "error", "message": "Failed to analyze image"}), 500
 
 # --- Run the Server ---
 if __name__ == '__main__':

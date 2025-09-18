@@ -1,5 +1,5 @@
 import express from 'express';
-import { getMe, updateMe, getUserStats } from '../controllers/auth.controller';
+import { getMe, updateMe, getUserStats,getOfficialStats } from '../controllers/auth.controller';
 import { protect } from '../middleware/auth.middleware'; // 👈 Import the middleware
 
 const router = express.Router();
@@ -9,5 +9,5 @@ const router = express.Router();
 router.get('/me', protect, getMe);
 router.put('/me', protect, updateMe);
 router.get('/me/stats', protect, getUserStats);
-
+router.get('/me/official-stats', protect, getOfficialStats);
 export default router;

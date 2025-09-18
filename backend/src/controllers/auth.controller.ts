@@ -223,3 +223,196 @@ export const getUserStats = async (req: Request, res: Response): Promise<void> =
     });
   }
 };
+
+
+export const getOfficialStats = async (req: Request, res: Response): Promise<void> => {
+  try {
+    //@ts-ignore
+    const { userId } = req.auth; // Provided by Clerk's 'protect' middleware
+
+    if (!userId) {
+      res.status(401).json({ message: 'Not authorized' });
+      return;
+    }
+
+    // Find user in database
+    const user = await User.findOne({ clerkId: userId });
+    if (!user) {
+      res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+      return;
+    }
+
+    // Check if user is official or admin
+    if (user.role !== 'official' && user.role !== 'admin') {
+      res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. Only officials and admins can access this endpoint.' 
+      });
+      return;
+    }
+
+    // Get current date and 30 days ago for recent activity
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Get start of current month
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    // Aggregate official review statistics
+    const [reviewStats, currentPending, monthlyReviews, responseTimeStats] = await Promise.all([
+      // Total reports reviewed by status
+      Report.aggregate([
+        { 
+          $match: { 
+            reviewedBy: user._id,
+            status: { $in: ['verified', 'rejected'] } // Only count completed reviews
+          } 
+        },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 }
+          }
+        }
+      ]),
+      
+      // Current pending reports (unverified reports in general, not assigned to specific official)
+      Report.countDocuments({
+        status: 'unverified'
+      }),
+      
+      // Monthly review count (current month)
+      Report.countDocuments({
+        reviewedBy: user._id,
+        status: { $in: ['verified', 'rejected'] },
+        updatedAt: { $gte: startOfMonth }
+      }),
+
+      // Calculate average response time
+      Report.aggregate([
+        { 
+          $match: { 
+            reviewedBy: user._id,
+            status: { $in: ['verified', 'rejected'] },
+            reviewedAt: { $exists: true }
+          } 
+        },
+        {
+          $addFields: {
+            responseTimeHours: {
+              $divide: [
+                { $subtract: ['$reviewedAt', '$createdAt'] },
+                1000 * 60 * 60 // Convert milliseconds to hours
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            averageResponseTime: { $avg: '$responseTimeHours' }
+          }
+        }
+      ])
+    ]);
+
+    // Process the aggregation results
+    const statusBreakdown = reviewStats.reduce((acc, item) => {
+      acc[item._id] = item.count;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const reportsVerified = statusBreakdown.verified || 0;
+    const reportsRejected = statusBreakdown.rejected || 0;
+    const reportsReviewed = reportsVerified + reportsRejected;
+
+    // Calculate verification accuracy (percentage of verified vs total reviewed)
+    const verificationAccuracy = reportsReviewed > 0 
+      ? Math.round((reportsVerified / reportsReviewed) * 100) 
+      : 0;
+
+    // Get average response time (default to 0 if no data)
+    const averageResponseTime = responseTimeStats.length > 0 
+      ? Math.round(responseTimeStats[0].averageResponseTime || 0) 
+      : 0;
+
+    // Define common specializations based on hazard types
+    // In a real app, this might come from the user profile or be calculated from their review history
+    const potentialSpecializations = [
+      'Geological Hazards',
+      'Weather Events', 
+      'Infrastructure',
+      'Environmental',
+      'Public Safety',
+      'Emergency Response'
+    ];
+
+    // For now, we'll determine specializations based on the types of reports they've reviewed most
+    const specializationQuery = await Report.aggregate([
+      { 
+        $match: { 
+          reviewedBy: user._id,
+          status: { $in: ['verified', 'rejected'] }
+        } 
+      },
+      {
+        $group: {
+          _id: '$hazardType',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 3 } // Top 3 specializations
+    ]);
+
+    // Convert hazard types to more readable specialization names
+    const hazardTypeToSpecialization: Record<string, string> = {
+      'geological': 'Geological Hazards',
+      'weather': 'Weather Events',
+      'infrastructure': 'Infrastructure',
+      'environmental': 'Environmental',
+      'other': 'General Safety'
+    };
+
+    const specializations = specializationQuery.map(item => 
+      hazardTypeToSpecialization[item._id] || 'General Safety'
+    );
+
+    // Calculate years of experience (this would typically come from user profile)
+    // For now, we'll calculate based on account creation date
+    const accountCreationDate = user.createdAt || new Date();
+    const yearsOfExperience = Math.max(0, 
+      Math.floor((Date.now() - accountCreationDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+    );
+
+    const officialStats = {
+      reportsReviewed,
+      reportsVerified,
+      reportsRejected,
+      averageResponseTime,
+      currentPendingReports: currentPending,
+      monthlyReviewCount: monthlyReviews,
+      verificationAccuracy,
+      specializations: specializations.length > 0 ? specializations : ['General Safety'],
+      yearsOfExperience: yearsOfExperience > 0 ? yearsOfExperience : undefined
+    };
+
+    res.status(200).json({
+      success: true,
+      stats: officialStats
+    });
+
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      success: false,
+      message: 'Server Error',
+      error: error.message
+    });
+  }
+};
