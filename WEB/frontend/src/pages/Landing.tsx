@@ -14,7 +14,8 @@ import {
   Shield,
   TrendingUp,
   MapPin,
-  ShieldCheck 
+  ShieldCheck,
+  RefreshCw
 } from 'lucide-react';
 import apiClient from '@/lib/api';
 
@@ -28,14 +29,63 @@ interface User {
   role: 'citizen' | 'official' | 'admin';
 }
 
+interface DashboardStats {
+  activeHazards: number;
+  communityMembers: number;
+  responseRate: number | string;
+  totalReports?: number;
+}
+
 const Landing = () => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user: clerkUser } = useUser();
   
-  // Get user data from react-query cache (populated by AuthSync)
-  const { data: user } = useQuery<User>({
+  // Get user data from react-query cache with improved error handling
+  const { 
+    data: user, 
+    error: userError, 
+    isLoading: userLoading,
+    refetch: refetchUser 
+  } = useQuery<User>({
     queryKey: ['me'],
-    enabled: isSignedIn,
+    queryFn: async () => {
+      try {
+        // Wait for Clerk to be ready and get token
+        const token = await getToken();
+        
+        if (!token) {
+          throw new Error('No authentication token available');
+        }
+
+        const { data } = await apiClient.get('/auth/me');
+        return data;
+      } catch (error: any) {
+        console.error('Error fetching user data:', error);
+        
+        // Log more details about the error
+        if (error.response) {
+          console.error('Response error:', {
+            status: error.response.status,
+            data: error.response.data,
+            headers: error.response.headers
+          });
+        }
+        
+        throw error;
+      }
+    },
+    enabled: isSignedIn && !!clerkUser, // Only run if user is signed in and Clerk user exists
+    retry: (failureCount, error: any) => {
+      // Don't retry on 401/403 (auth errors)
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        return false;
+      }
+      // Retry up to 2 times for other errors
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    // cacheTime: 10 * 60 * 1000, // 10 minutes
   });
 
   const features = [
@@ -68,39 +118,139 @@ const Landing = () => {
     { number: '24/7', label: 'Monitoring', icon: TrendingUp },
   ]);
 
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
   useEffect(() => {
     const fetchStats = async () => {
+      // Don't fetch stats if user is not signed in
+      if (!isSignedIn) {
+        return;
+      }
+
+      setStatsLoading(true);
+      setStatsError(null);
+      
       try {
-        const response = await apiClient.get('/api/v1/dashboard/stats');
-        const data = response.data;
+        const token = await getToken();
         
-        const formatNumber = (num: number) => {
-          if (typeof num !== 'number') return '0';
-          return new Intl.NumberFormat('en-IN').format(num);
+        // If no token, use default stats
+        if (!token) {
+          console.warn('No auth token available for stats');
+          setStatsLoading(false);
+          return;
         }
 
+        const response = await apiClient.get<DashboardStats>('/dashboard/stats');
+        const data = response.data;
+        
+        const formatNumber = (num: number | undefined) => {
+          if (typeof num !== 'number' || isNaN(num)) return '0';
+          return new Intl.NumberFormat('en-IN').format(num);
+        };
+
         const responseRate = typeof data.responseRate === 'number' 
-          ? `${data.responseRate}%` 
+          ? `${data.responseRate.toFixed(1)}%` 
           : data.responseRate || 'N/A';
 
         setStats([
-          { number: formatNumber(data.activeHazards), label: 'Active Hazards', icon: MapPin },
-          { number: formatNumber(data.communityMembers), label: 'Community Members', icon: Users },
-          { number: responseRate, label: 'Response Rate', icon: Shield },
+          { 
+            number: data.activeHazards ? formatNumber(data.activeHazards) : '0', 
+            label: 'Active Hazards', 
+            icon: MapPin 
+          },
+          { 
+            number: data.communityMembers ? formatNumber(data.communityMembers) : '0', 
+            label: 'Community Members', 
+            icon: Users 
+          },
+          { 
+            number: responseRate, 
+            label: 'Response Rate', 
+            icon: Shield 
+          },
+          { 
+            number: '24/7', 
+            label: 'Monitoring', 
+            icon: TrendingUp 
+          },
+        ]);
+      } catch (error: any) {
+        console.warn('Could not fetch live stats for landing page:', error);
+        setStatsError('Failed to load live statistics');
+        
+        // Use default stats on error
+        setStats([
+          { number: 'N/A', label: 'Active Hazards', icon: MapPin },
+          { number: 'N/A', label: 'Community Members', icon: Users },
+          { number: 'N/A', label: 'Response Rate', icon: Shield },
           { number: '24/7', label: 'Monitoring', icon: TrendingUp },
         ]);
-      } catch (error) {
-        console.warn('Could not fetch live stats for landing page. Using default values.');
+      } finally {
+        setStatsLoading(false);
       }
     };
 
-    fetchStats();
-  }, []);
+    // Only fetch stats when user is signed in and Clerk user is available
+    if (isSignedIn && clerkUser) {
+      fetchStats();
+    }
+  }, [isSignedIn, clerkUser, getToken]);
 
-  const isOfficial = user && (user.role === 'official' || user.role === 'admin');
+  // Determine user role with fallbacks
+  const getUserRole = () => {
+    //@ts-ignore
+    if (user?.role) {
+      //@ts-ignore
+      return user.role;
+    }
+    // Fallback to checking Clerk user metadata
+    if (clerkUser?.publicMetadata?.role) {
+      return clerkUser.publicMetadata.role as string;
+    }
+    return 'citizen'; // Default role
+  };
+
+  const userRole = getUserRole();
+  const isOfficial = userRole === 'official' || userRole === 'admin';
+
+  // Show loading state if user data is loading and user is signed in
+  if (isSignedIn && userLoading && !userError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground">Loading user profile...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
+      {/* User Error Banner */}
+      {userError && isSignedIn && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-600" />
+              <span className="text-yellow-800 text-sm">
+                Unable to load user profile. Some features may be limited.
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => refetchUser()}
+              className="text-yellow-600 hover:text-yellow-700"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
       <section className="relative h-screen flex items-center justify-center overflow-hidden">
         <div 
@@ -161,7 +311,7 @@ const Landing = () => {
                           Get Started
                         </Link>
                       </Button>
-                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white text-primary">
+                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
                         <Link to="/about">
                           Learn More
                         </Link>
@@ -186,6 +336,27 @@ const Landing = () => {
       {/* Stats Section */}
       <section className="py-16 bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Stats Error Banner */}
+          {statsError && isSignedIn && (
+            <div className="mb-8 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <AlertTriangle className="w-5 h-5 text-orange-600" />
+                  <span className="text-orange-800 text-sm">{statsError}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                  className="text-orange-600 hover:text-orange-700"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, index) => {
               const Icon = stat.icon;
@@ -201,7 +372,13 @@ const Landing = () => {
                   <div className="inline-flex items-center justify-center w-12 h-12 bg-primary/10 rounded-lg mb-4">
                     <Icon className="w-6 h-6 text-primary" />
                   </div>
-                  <div className="text-3xl font-bold text-foreground mb-2">{stat.number}</div>
+                  <div className="text-3xl font-bold text-foreground mb-2 flex items-center justify-center">
+                    {statsLoading ? (
+                      <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
+                    ) : (
+                      stat.number
+                    )}
+                  </div>
                   <div className="text-muted-foreground">{stat.label}</div>
                 </motion.div>
               );
