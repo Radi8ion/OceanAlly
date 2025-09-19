@@ -16,6 +16,7 @@ import ProfilePage from "./pages/Profile"; // Import the ProfilePage component
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import VerificationDashboard from "./pages/VerificationDashboard";
+import LiveFeeds from "./pages/Livefeeds"; // Import the LiveFeeds component
 
 // Import the ChatbotOverlay component
 import ChatbotOverlay from "./pages/ChatbotOverlay";
@@ -63,6 +64,21 @@ const App = () => {
                 <SignedIn>
                   <AuthSync>
                     <Layout><Dashboard /></Layout>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } 
+          />
+          <Route 
+            path="/live-feeds" 
+            element={
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <Layout><LiveFeeds /></Layout>
                   </AuthSync>
                 </SignedIn>
                 <SignedOut>
