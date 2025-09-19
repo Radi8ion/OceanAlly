@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.handleCreateReportSocket = void 0;
+exports.rejectReport = exports.verifyReport = exports.getUnverifiedReports = exports.getVerifiedReports = exports.getReports = exports.handleCreateReportSocket = void 0;
 const mongoose_1 = require("mongoose");
 const axios_1 = __importDefault(require("axios"));
 const report_model_1 = __importDefault(require("../models/report.model"));
@@ -70,6 +70,28 @@ const handleCreateReportSocket = async (socket, data, io) => {
     }
 };
 exports.handleCreateReportSocket = handleCreateReportSocket;
+const getReports = async (req, res) => {
+    try {
+        const { timeRange } = req.query;
+        const days = parseInt(timeRange, 10) || 30;
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - days);
+        const reports = await report_model_1.default.find({
+            status: 'verified',
+            createdAt: { $gte: sinceDate }
+        })
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json(reports);
+    }
+    catch (error) {
+        res.status(500).json({
+            message: 'Failed to fetch reports',
+            error: error.message,
+        });
+    }
+};
+exports.getReports = getReports;
 const getVerifiedReports = async (req, res) => {
     try {
         const reports = await report_model_1.default.find({ status: 'verified' })

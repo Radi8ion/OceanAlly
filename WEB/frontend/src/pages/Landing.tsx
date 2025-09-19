@@ -311,7 +311,7 @@ const Landing = () => {
                           Get Started
                         </Link>
                       </Button>
-                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white hover:text-primary">
+                      <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white text-primary">
                         <Link to="/about">
                           Learn More
                         </Link>

@@ -11,6 +11,7 @@ const createReportRouter = (io) => {
         next();
     };
     router.use(attachIO);
+    router.get('/', auth_middleware_1.protect, auth_middleware_1.attachUser, report_controller_1.getReports);
     router.get('/verified', auth_middleware_1.protect, report_controller_1.getVerifiedReports);
     router.get('/unverified', auth_middleware_1.protect, auth_middleware_1.attachUser, (0, auth_middleware_1.authorize)(['official', 'admin']), report_controller_1.getUnverifiedReports);
     router.put('/:id/verify', auth_middleware_1.protect, auth_middleware_1.attachUser, (0, auth_middleware_1.authorize)(['official', 'admin']), report_controller_1.verifyReport);

@@ -23,7 +23,12 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
       const primaryEmail = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress || '';
       
       // ✅ This is where you set the role and details
-      const role = primaryEmail.endsWith('@moes.gov.in') ? 'official' : 'citizen';
+   const role = primaryEmail.endsWith('@admin.gov.in')
+  ? 'admin'
+  : primaryEmail.endsWith('@moes.gov.in')
+    ? 'official'
+    : 'citizen';
+
 
       user = await User.create({
         clerkId: clerkUser.id,

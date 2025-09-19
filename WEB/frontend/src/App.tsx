@@ -16,7 +16,8 @@ import ProfilePage from "./pages/Profile"; // Import the ProfilePage component
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import VerificationDashboard from "./pages/VerificationDashboard";
-import LiveFeeds from "./pages/Livefeeds"; // Import the LiveFeeds component
+import LiveFeeds from "./pages/LiveFeeds"; // Import the LiveFeeds component
+import Analysis from "./pages/Analysis"; // Import the Analysis component
 
 // Import the ChatbotOverlay component
 import ChatbotOverlay from "./pages/ChatbotOverlay";
@@ -109,6 +110,25 @@ const App = () => {
                 <SignedIn>
                   <AuthSync>
                     <Layout><ProfilePage /></Layout>
+                  </AuthSync>
+                </SignedIn>
+                <SignedOut>
+                  <RedirectToSignIn />
+                </SignedOut>
+              </>
+            } 
+          />
+          
+          {/* Admin Only Routes */}
+          <Route 
+            path="/admin/analysis" 
+            element={
+              <>
+                <SignedIn>
+                  <AuthSync>
+                    <RoleProtectedRoute roles={['admin']}>
+                      <Layout><Analysis /></Layout>
+                    </RoleProtectedRoute>
                   </AuthSync>
                 </SignedIn>
                 <SignedOut>
