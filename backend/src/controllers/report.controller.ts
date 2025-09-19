@@ -95,6 +95,30 @@ export const handleCreateReportSocket = async (socket: Socket, data: any, io: So
   }
 };
 
+export const getReports = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { timeRange } = req.query; // e.g. ?timeRange=30
+    const days = parseInt(timeRange as string, 10) || 30;
+
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - days);
+
+    const reports = await Report.find({
+      status: 'verified',
+      createdAt: { $gte: sinceDate }
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(reports);
+  } catch (error: any) {
+    res.status(500).json({
+      message: 'Failed to fetch reports',
+      error: error.message,
+    });
+  }
+};
+
 // --- EXPRESS ROUTE CONTROLLERS ---
 export const getVerifiedReports = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {

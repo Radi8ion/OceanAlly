@@ -33,7 +33,8 @@ import {
   UserCheck,
   User,
   LogOut,
-  Waves, // Icon for Live Feeds
+  Waves,
+  TrendingUp, // Icon for Analysis
 } from "lucide-react";
 
 // --- TYPE DEFINITIONS ---
@@ -73,6 +74,7 @@ const Navbar = () => {
     retry: 1,
   });
 
+  const isAdmin = user && user.role === "admin";
   const isOfficial = user && (user.role === "official" || user.role === "admin");
 
   const getNavItems = () => {
@@ -80,6 +82,15 @@ const Navbar = () => {
       { name: t("navbar.dashboard", "Dashboard"), href: "/dashboard", icon: BarChart3 },
       { name: t("navbar.liveFeeds", "Live Feeds"), href: "/live-feeds", icon: Waves },
     ];
+
+    // Add Analysis page for admin users only
+    if (isAdmin) {
+      baseItems.push({
+        name: t("navbar.analysis", "Analysis"),
+        href: "/admin/analysis",
+        icon: TrendingUp,
+      });
+    }
 
     if (isOfficial) {
       baseItems.push({
@@ -187,6 +198,10 @@ const Navbar = () => {
                         {user.firstName} {user.lastName}
                       </p>
                       <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
+                      {/* Display user role */}
+                      <p className="text-xs leading-none text-muted-foreground capitalize">
+                        {user.role}
+                      </p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />

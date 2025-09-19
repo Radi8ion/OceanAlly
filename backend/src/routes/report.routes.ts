@@ -4,7 +4,7 @@ import {
   getUnverifiedReports,
   verifyReport,
   rejectReport,
-  handleCreateReportSocket,
+  handleCreateReportSocket,getReports
 } from '../controllers/report.controller';
 import { protect, attachUser, authorize } from '../middleware/auth.middleware';
 import { Server as SocketIOServer, Socket } from 'socket.io';
@@ -25,6 +25,8 @@ export const createReportRouter = (io: SocketIOServer) => {
   
   // Attach io to all routes in this router
   router.use(attachIO);
+
+router.get('/', protect, attachUser, getReports);
 
   // --- Public Routes (for authenticated users) ---
   router.get('/verified', 

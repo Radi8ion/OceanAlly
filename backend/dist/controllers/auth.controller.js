@@ -18,7 +18,11 @@ const getMe = async (req, res) => {
         if (!user) {
             const clerkUser = await clerk_sdk_node_1.clerkClient.users.getUser(userId);
             const primaryEmail = clerkUser.emailAddresses.find(e => e.id === clerkUser.primaryEmailAddressId)?.emailAddress || '';
-            const role = primaryEmail.endsWith('@moes.gov.in') ? 'official' : 'citizen';
+            const role = primaryEmail.endsWith('@admin.gov.in')
+                ? 'admin'
+                : primaryEmail.endsWith('@moes.gov.in')
+                    ? 'official'
+                    : 'citizen';
             user = await user_model_1.default.create({
                 clerkId: clerkUser.id,
                 firstName: clerkUser.firstName || '',
